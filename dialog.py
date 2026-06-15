@@ -5,17 +5,14 @@ import threading
 
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLabel, QLineEdit, QPushButton, QCheckBox, QComboBox,
-    QTextEdit, QProgressBar, QGroupBox, QSizePolicy,
+    QLineEdit, QPushButton, QCheckBox, QComboBox,
+    QTextEdit, QProgressBar, QGroupBox,
     QMessageBox,
 )
-from qgis.PyQt.QtCore import Qt, QSettings, QTimer, pyqtSignal
+from qgis.PyQt.QtCore import QSettings, QTimer, pyqtSignal
 from qgis.PyQt.QtGui import QFont
 from qgis.gui import QgsMapLayerComboBox
-from qgis.core import (
-    QgsMapLayerProxyModel, QgsVectorFileWriter, QgsProject,
-    QgsVectorLayer,
-)
+from qgis.core import QgsMapLayerProxyModel, QgsVectorFileWriter, QgsProject
 
 from .api import WaystonesAPI, WaystonesAPIError
 
@@ -188,12 +185,14 @@ class WaystonesDialog(QDialog):
         services = []
         if self._chk_oapif.isChecked():
             services.append("oapif")
-        if not services:
-            QMessageBox.warning(self, "Waystones Cloud", "Select at least one service.")
-            return
 
         generate_tiles = self._chk_tiles.isChecked()
         generate_stac = self._chk_stac.isChecked()
+
+        if not services and not generate_tiles and not generate_stac:
+            QMessageBox.warning(self, "Waystones Cloud", "Select at least one service.")
+            return
+
         data_region = self._region_combo.currentData()
 
         self._save_settings()
@@ -244,13 +243,7 @@ class WaystonesDialog(QDialog):
             project_id = project["id"]
             self._log_line.emit(f"Project ID: {project_id}")
 
-            # 5. Deploy
-            self._log_line.emit(f"Deploying with slug '{slug}'…")
-            deploy_result = api.deploy(project_id, slug, services)
-            self._deployment_id = deploy_result["deploymentId"]
-            self._log_line.emit(f"Deployment queued: {self._deployment_id}")
-
-            # 6. Optional: trigger tiles / STAC (fire-and-forget; they run in background)
+            # 5. Optional: trigger tiles / STAC background jobs
             if generate_tiles:
                 self._log_line.emit("Queuing tile generation…")
                 api.generate_tiles(project_id)
@@ -258,8 +251,15 @@ class WaystonesDialog(QDialog):
                 self._log_line.emit("Queuing STAC generation…")
                 api.generate_stac(project_id)
 
-            # 7. Start polling timer on main thread
-            QTimer.singleShot(0, self._start_poll)
+            # 6. Deploy (optional — tiles/STAC can run without a live endpoint)
+            if services:
+                self._log_line.emit(f"Deploying with slug '{slug}'…")
+                deploy_result = api.deploy(project_id, slug, services)
+                self._deployment_id = deploy_result["deploymentId"]
+                self._log_line.emit(f"Deployment queued: {self._deployment_id}")
+                QTimer.singleShot(0, self._start_poll)
+            else:
+                self._deploy_done.emit("")
 
         except WaystonesAPIError as e:
             self._deploy_error.emit(str(e))

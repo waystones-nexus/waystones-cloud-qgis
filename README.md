@@ -40,7 +40,7 @@ Then enable the plugin in *Plugins → Manage and Install Plugins → Installed*
 2. Paste your API key (saved automatically after first use)
 3. Select a vector layer from the dropdown
 4. Set a project name and slug
-5. Check which services to deploy (OAPIF is required; tiles and STAC are optional background jobs)
+5. Check which services to deploy — any combination of OAPIF, vector tiles, and STAC works
 6. Click **Deploy** and watch the log
 
 ## Multi-layer projects
