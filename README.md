@@ -18,7 +18,7 @@ Publish any vector layer open in QGIS directly to [Waystones Cloud](https://ways
 
 **From ZIP (easiest):**
 
-1. Download the latest release ZIP from the [releases page](https://github.com/waystones/waystones-cloud-qgis/releases)
+1. Download the latest release ZIP from the [releases page](https://github.com/waystones-nexus/waystones-cloud-qgis/releases)
 2. In QGIS: *Plugins → Manage and Install Plugins → Install from ZIP*
 3. Browse to the downloaded ZIP and click **Install Plugin**
 
