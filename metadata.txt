@@ -1,0 +1,16 @@
+[general]
+name=Waystones Cloud
+qgisMinimumVersion=3.16
+description=Publish layers from QGIS to Waystones Cloud — OAPIF, vector tiles, and STAC with one click.
+version=0.1.0
+author=Waystones
+email=hello@waystones.cloud
+about=Select any vector layer open in QGIS, pick a slug, choose which services to deploy (OGC API Features, vector tiles, STAC), and deploy directly to Waystones Cloud. Layers are exported to GeoPackage automatically before upload — no manual conversion needed.
+tracker=https://github.com/waystones/waystones-cloud-qgis/issues
+repository=https://github.com/waystones/waystones-cloud-qgis
+tags=cloud,publish,OGC,API,Features,vector,tiles,STAC,GeoPackage
+homepage=https://waystones.cloud
+category=Web
+icon=resources/icon.png
+experimental=True
+deprecated=False
