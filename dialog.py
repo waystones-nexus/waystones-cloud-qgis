@@ -6,7 +6,7 @@ import threading
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QPushButton, QCheckBox, QComboBox,
-    QTextEdit, QProgressBar, QGroupBox,
+    QTextEdit, QProgressBar, QGroupBox, QSpinBox, QLabel,
     QMessageBox,
 )
 from qgis.PyQt.QtCore import QSettings, QTimer, pyqtSignal
@@ -94,6 +94,35 @@ class WaystonesDialog(QDialog):
         self._chk_stac = QCheckBox("STAC catalog")
         svc_layout.addWidget(self._chk_oapif)
         svc_layout.addWidget(self._chk_tiles)
+
+        # Zoom options — shown only when tiles is checked
+        self._tiles_options = QGroupBox()
+        self._tiles_options.setFlat(True)
+        tiles_form = QFormLayout(self._tiles_options)
+        tiles_form.setContentsMargins(16, 0, 0, 0)
+
+        self._chk_auto_zoom = QCheckBox("Auto zoom (recommended)")
+        self._chk_auto_zoom.setChecked(True)
+        tiles_form.addRow(self._chk_auto_zoom)
+
+        zoom_row = QHBoxLayout()
+        self._spin_min_zoom = QSpinBox()
+        self._spin_min_zoom.setRange(0, 14)
+        self._spin_min_zoom.setValue(0)
+        self._spin_max_zoom = QSpinBox()
+        self._spin_max_zoom.setRange(0, 14)
+        self._spin_max_zoom.setValue(14)
+        zoom_row.addWidget(QLabel("Min:"))
+        zoom_row.addWidget(self._spin_min_zoom)
+        zoom_row.addSpacing(12)
+        zoom_row.addWidget(QLabel("Max:"))
+        zoom_row.addWidget(self._spin_max_zoom)
+        zoom_row.addStretch()
+        tiles_form.addRow(zoom_row)
+
+        self._tiles_options.setVisible(False)
+        svc_layout.addWidget(self._tiles_options)
+
         svc_layout.addWidget(self._chk_stac)
         root.addWidget(services)
 
@@ -127,10 +156,16 @@ class WaystonesDialog(QDialog):
         self._deploy_btn.clicked.connect(self._on_deploy)
         self._close_btn.clicked.connect(self.close)
         self._layer_combo.layerChanged.connect(self._on_layer_changed)
+        self._chk_tiles.toggled.connect(self._tiles_options.setVisible)
+        self._chk_auto_zoom.toggled.connect(self._on_auto_zoom_toggled)
         self._log_line.connect(self._append_log)
         self._progress.connect(self._update_progress)
         self._deploy_done.connect(self._on_deploy_done)
         self._deploy_error.connect(self._on_deploy_error)
+
+    def _on_auto_zoom_toggled(self, checked: bool):
+        self._spin_min_zoom.setEnabled(not checked)
+        self._spin_max_zoom.setEnabled(not checked)
 
     # ------------------------------------------------------------------
     # Settings persistence
@@ -193,6 +228,13 @@ class WaystonesDialog(QDialog):
             QMessageBox.warning(self, "Waystones Cloud", "Select at least one service.")
             return
 
+        auto_zoom = self._chk_auto_zoom.isChecked()
+        min_zoom = self._spin_min_zoom.value()
+        max_zoom = self._spin_max_zoom.value()
+        if not auto_zoom and min_zoom > max_zoom:
+            QMessageBox.warning(self, "Waystones Cloud", "Min zoom must be ≤ max zoom.")
+            return
+
         data_region = self._region_combo.currentData()
 
         self._save_settings()
@@ -202,11 +244,13 @@ class WaystonesDialog(QDialog):
 
         threading.Thread(
             target=self._run_deploy,
-            args=(api_key, layer, name, slug, services, generate_tiles, generate_stac, data_region),
+            args=(api_key, layer, name, slug, services, generate_tiles, generate_stac,
+                  auto_zoom, min_zoom, max_zoom, data_region),
             daemon=True,
         ).start()
 
-    def _run_deploy(self, api_key, layer, name, slug, services, generate_tiles, generate_stac, data_region):
+    def _run_deploy(self, api_key, layer, name, slug, services, generate_tiles, generate_stac,
+                    auto_zoom, min_zoom, max_zoom, data_region):
         try:
             api = WaystonesAPI(api_key)
 
@@ -246,7 +290,7 @@ class WaystonesDialog(QDialog):
             # 5. Optional: trigger tiles / STAC background jobs
             if generate_tiles:
                 self._log_line.emit("Queuing tile generation…")
-                api.generate_tiles(project_id)
+                api.generate_tiles(project_id, auto_zoom=auto_zoom, min_zoom=min_zoom, max_zoom=max_zoom)
             if generate_stac:
                 self._log_line.emit("Queuing STAC generation…")
                 api.generate_stac(project_id)

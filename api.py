@@ -107,8 +107,19 @@ class WaystonesAPI:
     # ------------------------------------------------------------------
     # Optional: trigger tiles / STAC generation
     # ------------------------------------------------------------------
-    def generate_tiles(self, project_id: str) -> dict:
-        return self._json("POST", f"/api/projects/{project_id}/tiles/generate", json={})
+    def generate_tiles(
+        self,
+        project_id: str,
+        auto_zoom: bool = True,
+        min_zoom: int = 0,
+        max_zoom: int = 14,
+    ) -> dict:
+        return self._json("POST", f"/api/projects/{project_id}/tiles", json={
+            "autoZoom": auto_zoom,
+            "minZoom": min_zoom,
+            "maxZoom": max_zoom,
+            "force": True,
+        })
 
     def generate_stac(self, project_id: str) -> dict:
         return self._json("POST", f"/api/projects/{project_id}/stac/worker", json={})
