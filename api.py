@@ -72,15 +72,25 @@ class WaystonesAPI:
         file_size_bytes: int,
         is_private: bool = False,
         data_region: str = "default",
+        data_model: dict = None,
+        partition_strategy: str = None,
+        partition_column: str = None,
     ) -> dict:
-        return self._json("POST", "/api/projects", json={
+        body = {
             "name": name,
             "sourceType": "geopackage",
             "objectKey": object_key,
             "fileSizeBytes": file_size_bytes,
             "isPrivate": is_private,
             "dataRegion": data_region,
-        })
+        }
+        if data_model is not None:
+            body["dataModel"] = data_model
+        if partition_strategy is not None:
+            body["partitionStrategy"] = partition_strategy
+        if partition_column is not None:
+            body["partitionColumn"] = partition_column
+        return self._json("POST", "/api/projects", json=body)
 
     # ------------------------------------------------------------------
     # Step 4: deploy
@@ -113,13 +123,17 @@ class WaystonesAPI:
         auto_zoom: bool = True,
         min_zoom: int = 0,
         max_zoom: int = 14,
+        simplification: float = None,
     ) -> dict:
-        return self._json("POST", f"/api/projects/{project_id}/tiles", json={
+        body = {
             "autoZoom": auto_zoom,
             "minZoom": min_zoom,
             "maxZoom": max_zoom,
             "force": True,
-        })
+        }
+        if simplification is not None:
+            body["simplification"] = simplification
+        return self._json("POST", f"/api/projects/{project_id}/tiles", json=body)
 
     def generate_stac(self, project_id: str) -> dict:
-        return self._json("POST", f"/api/projects/{project_id}/stac/worker", json={})
+        return self._json("POST", f"/api/projects/{project_id}/stac", json={})
