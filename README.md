@@ -11,7 +11,7 @@ Publish any vector layer open in QGIS directly to [Waystones Cloud](https://ways
 
 ## Requirements
 
-- QGIS 4.0 or later (uses bundled Python + `requests`)
+- QGIS 4.0 or later
 - A [Waystones Cloud](https://waystones.cloud) account and API key
 
 ## Installation
