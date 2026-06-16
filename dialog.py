@@ -5,7 +5,7 @@ import threading
 from urllib.parse import urlparse
 
 from PyQt6.QtWidgets import (
-    QButtonGroup, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QScrollArea, QWidget,
+    QApplication, QButtonGroup, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QScrollArea, QWidget,
     QLineEdit, QPushButton, QCheckBox, QComboBox,
     QTextEdit, QProgressBar, QGroupBox, QSpinBox, QLabel,
     QMessageBox, QStackedWidget, QDoubleSpinBox, QFrame,
@@ -20,8 +20,7 @@ from qgis.core import (
     QgsSingleSymbolRenderer, QgsCategorizedSymbolRenderer,
     QgsSimpleMarkerSymbolLayer, QgsSimpleLineSymbolLayer,
     QgsSimpleFillSymbolLayer, QgsLinePatternFillSymbolLayer,
-    QgsVectorLayerSimpleLabeling, QgsStyle, QgsApplication,
-    QgsAuthMethodConfig,
+    QgsVectorLayerSimpleLabeling, QgsStyle,
 )
 
 from .api import WaystonesAPI, WaystonesAPIError
@@ -874,53 +873,15 @@ class WaystonesDialog(QDialog):
     # Settings persistence
     # ------------------------------------------------------------------
 
-    # ------------------------------------------------------------------
-    # Secure API key helpers (QgsAuthManager → QSettings fallback)
-    # ------------------------------------------------------------------
-
-    _AUTH_CONFIG_ID_KEY = "waystones_cloud/auth_config_id"
-    _AUTH_CONFIG_NAME = "Waystones Cloud API key"
-
-    def _load_api_key_secure(self) -> str:
-        am = QgsApplication.authManager()
-        config_id = QSettings().value(self._AUTH_CONFIG_ID_KEY, "")
-        if config_id and am and not am.isDisabled():
-            cfg = QgsAuthMethodConfig()
-            if am.loadAuthenticationConfig(config_id, cfg, True):
-                return cfg.config("password", "")
-        # Fallback: plain QSettings (pre-migration or auth manager disabled)
-        return QSettings().value(SETTINGS_KEY_API_KEY, "")
-
-    def _save_api_key_secure(self, key: str) -> None:
-        am = QgsApplication.authManager()
-        s = QSettings()
-        if am and not am.isDisabled():
-            config_id = s.value(self._AUTH_CONFIG_ID_KEY, "")
-            cfg = QgsAuthMethodConfig()
-            cfg.setMethod("Basic")
-            cfg.setName(self._AUTH_CONFIG_NAME)
-            cfg.setConfig("username", "waystones")
-            cfg.setConfig("password", key)
-            if config_id and am.loadAuthenticationConfig(config_id, QgsAuthMethodConfig(), False):
-                cfg.setId(config_id)
-                am.updateAuthenticationConfig(cfg)
-            else:
-                am.storeAuthenticationConfig(cfg)
-                s.setValue(self._AUTH_CONFIG_ID_KEY, cfg.id())
-            # Remove plaintext remnant if present
-            s.remove(SETTINGS_KEY_API_KEY)
-        else:
-            s.setValue(SETTINGS_KEY_API_KEY, key)
-
     def _load_settings(self):
-        self._api_key_edit.setText(self._load_api_key_secure())
         s = QSettings()
+        self._api_key_edit.setText(s.value(SETTINGS_KEY_API_KEY, ""))
         self._chk_eu.setChecked(s.value(SETTINGS_KEY_EU, "") == "eu")
         self._chk_private.setChecked(s.value(SETTINGS_KEY_IS_PRIVATE, False, type=bool))
 
     def _save_settings(self):
-        self._save_api_key_secure(self._api_key_edit.text().strip())
         s = QSettings()
+        s.setValue(SETTINGS_KEY_API_KEY, self._api_key_edit.text().strip())
         s.setValue(SETTINGS_KEY_EU, "eu" if self._chk_eu.isChecked() else "default")
         s.setValue(SETTINGS_KEY_IS_PRIVATE, self._chk_private.isChecked())
 
@@ -1306,28 +1267,21 @@ class WaystonesDialog(QDialog):
         self._verify_btn.setEnabled(False)
         self._verify_status.setText("Checking…")
         self._verify_status.setStyleSheet("color: #94a3b8; font-size: 11px;")
-
-        def _check():
-            try:
-                api = WaystonesAPI(api_key)
-                projects = api.verify_key()
-                n = len(projects) if isinstance(projects, list) else "?"
-                self._save_settings()
-                QTimer.singleShot(0, lambda: (
-                    self._verify_status.setText(f"✓ Authenticated  —  {n} project(s) on this account"),
-                    self._verify_status.setStyleSheet("color: #6366f1; font-size: 11px; font-weight: 600;"),
-                ))
-            except WaystonesAPIError as e:
-                msg = str(e)
-                text = "✗ Invalid key — check and try again" if "401" in msg else f"✗ {msg}"
-                QTimer.singleShot(0, lambda: (
-                    self._verify_status.setText(text),
-                    self._verify_status.setStyleSheet("color: #dc2626; font-size: 11px; font-weight: 600;"),
-                ))
-            finally:
-                QTimer.singleShot(0, lambda: self._verify_btn.setEnabled(True))
-
-        threading.Thread(target=_check, daemon=True).start()
+        QApplication.processEvents()
+        try:
+            api = WaystonesAPI(api_key)
+            projects = api.verify_key()
+            n = len(projects) if isinstance(projects, list) else "?"
+            self._save_settings()
+            self._verify_status.setText(f"✓ Authenticated  —  {n} project(s) on this account")
+            self._verify_status.setStyleSheet("color: #6366f1; font-size: 11px; font-weight: 600;")
+        except WaystonesAPIError as e:
+            msg = str(e)
+            text = "✗ Invalid key — check and try again" if "401" in msg else f"✗ {msg}"
+            self._verify_status.setText(text)
+            self._verify_status.setStyleSheet("color: #dc2626; font-size: 11px; font-weight: 600;")
+        finally:
+            self._verify_btn.setEnabled(True)
 
     # ------------------------------------------------------------------
     # Slug availability check
@@ -1343,19 +1297,18 @@ class WaystonesDialog(QDialog):
         self._slug_check_btn.setEnabled(False)
         self._slug_status_label.setText("Checking…")
         self._slug_status_label.setStyleSheet("color: #94a3b8; font-size: 11px;")
-
-        def _check():
-            try:
-                api = WaystonesAPI(api_key)
-                result = api.check_slug(slug, domain)
-                if result.get("available"):
-                    self._slug_result.emit(f"✓ Available on {domain}", "#6366f1", True)
-                else:
-                    self._slug_result.emit(f"✗ {result.get('error', 'Not available.')}", "#dc2626", True)
-            except Exception as e:
-                self._slug_result.emit(f"Error: {e}", "#dc2626", True)
-
-        threading.Thread(target=_check, daemon=True).start()
+        QApplication.processEvents()
+        try:
+            api = WaystonesAPI(api_key)
+            result = api.check_slug(slug, domain)
+            if result.get("available"):
+                self._slug_result.emit(f"✓ Available on {domain}", "#6366f1", True)
+            else:
+                self._slug_result.emit(f"✗ {result.get('error', 'Not available.')}", "#dc2626", True)
+        except Exception as e:
+            self._slug_result.emit(f"Error: {e}", "#dc2626", True)
+        finally:
+            self._slug_check_btn.setEnabled(True)
 
     # ------------------------------------------------------------------
     # Deploy
