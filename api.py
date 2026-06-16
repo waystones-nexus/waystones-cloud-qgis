@@ -1,5 +1,9 @@
+import json
 import os
-import requests
+
+from qgis.core import QgsBlockingNetworkRequest
+from PyQt6.QtNetwork import QNetworkRequest
+from PyQt6.QtCore import QUrl, QUrlQuery, QByteArray
 
 BASE_URL = "https://waystones.cloud"
 
@@ -11,28 +15,68 @@ class WaystonesAPIError(Exception):
 class WaystonesAPI:
     def __init__(self, api_key: str, base_url: str = BASE_URL):
         self.base_url = base_url.rstrip("/")
-        self.session = requests.Session()
-        self.session.headers.update({"Authorization": f"Bearer {api_key}"})
+        self._auth = f"Bearer {api_key}".encode()
 
-    def _raise_for_status(self, resp) -> None:
-        if not resp.ok:
+    def _req(self, path: str, params: dict = None, auth: bool = True) -> QNetworkRequest:
+        url = QUrl(f"{self.base_url}{path}")
+        if params:
+            q = QUrlQuery()
+            for k, v in params.items():
+                q.addQueryItem(k, str(v))
+            url.setQuery(q)
+        req = QNetworkRequest(url)
+        if auth:
+            req.setRawHeader(b"Authorization", self._auth)
+        return req
+
+    def _parse_reply(self, blocker: QgsBlockingNetworkRequest, err) -> bytes:
+        if err == QgsBlockingNetworkRequest.ErrorCode.NetworkError:
+            raise WaystonesAPIError(f"Network error: {blocker.errorMessage()}")
+        reply = blocker.reply()
+        status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+        content = bytes(reply.content())
+        if status is None:
+            raise WaystonesAPIError(f"No response: {blocker.errorMessage()}")
+        if not (200 <= int(status) < 300):
             try:
-                msg = resp.json().get("error") or resp.text
+                msg = json.loads(content).get("error") or content.decode()
             except Exception:
-                msg = resp.text
-            raise WaystonesAPIError(f"HTTP {resp.status_code}: {msg}")
+                msg = content.decode(errors="replace")
+            raise WaystonesAPIError(f"HTTP {status}: {msg}")
+        return content
 
-    def _json(self, method: str, path: str, **kwargs):
-        kwargs.setdefault("timeout", 15)
-        resp = self.session.request(method, f"{self.base_url}{path}", **kwargs)
-        self._raise_for_status(resp)
-        return resp.json()
+    def _json(self, method: str, path: str, params: dict = None, json_body=None):
+        req = self._req(path, params=params)
+        data = QByteArray()
+        if json_body is not None:
+            req.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
+            data = QByteArray(json.dumps(json_body).encode())
+
+        blocker = QgsBlockingNetworkRequest()
+        if method == "GET":
+            err = blocker.get(req, forceRefresh=True)
+        elif method == "POST":
+            err = blocker.post(req, data)
+        elif method == "PATCH":
+            err = blocker.sendCustomRequest(req, b"PATCH", data)
+        elif method == "DELETE":
+            err = blocker.deleteResource(req)
+        else:
+            raise WaystonesAPIError(f"Unsupported method: {method}")
+
+        content = self._parse_reply(blocker, err)
+        if content:
+            try:
+                return json.loads(content)
+            except Exception:
+                return None
+        return None
 
     # ------------------------------------------------------------------
-    # Step 1: get presigned upload URL
+    # Projects
     # ------------------------------------------------------------------
+
     def verify_key(self) -> list:
-        """Returns project list (even empty) to confirm the key is valid. Raises on 401."""
         return self._json("GET", "/api/projects")
 
     def list_projects(self) -> list:
@@ -42,62 +86,80 @@ class WaystonesAPI:
         return self._json("GET", f"/api/projects/{project_id}")
 
     def update_project(self, project_id: str, **fields) -> dict:
-        return self._json("PATCH", f"/api/projects/{project_id}", json=fields)
+        return self._json("PATCH", f"/api/projects/{project_id}", json_body=fields)
 
     def replace_project_file(self, project_id: str, object_key: str, file_size_bytes: int) -> dict:
-        return self._json("POST", f"/api/projects/{project_id}/replace", json={
+        return self._json("POST", f"/api/projects/{project_id}/replace", json_body={
             "objectKey": object_key,
             "fileSizeBytes": file_size_bytes,
         })
+
+    def delete_project(self, project_id: str) -> None:
+        self._json("DELETE", f"/api/projects/{project_id}")
+
+    # ------------------------------------------------------------------
+    # Project API keys
+    # ------------------------------------------------------------------
 
     def list_project_api_keys(self, project_id: str) -> list:
         return self._json("GET", f"/api/projects/{project_id}/api-keys").get("keys", [])
 
     def create_project_api_key(self, project_id: str, label: str) -> dict:
-        return self._json("POST", f"/api/projects/{project_id}/api-keys", json={"label": label})
+        return self._json("POST", f"/api/projects/{project_id}/api-keys", json_body={"label": label})
 
     def revoke_project_api_key(self, project_id: str, key_id: str) -> None:
-        resp = self.session.request("DELETE", f"{self.base_url}/api/projects/{project_id}/api-keys/{key_id}")
-        self._raise_for_status(resp)
+        self._json("DELETE", f"/api/projects/{project_id}/api-keys/{key_id}")
+
+    # ------------------------------------------------------------------
+    # Deployments
+    # ------------------------------------------------------------------
 
     def delete_deployment(self, deployment_id: str) -> None:
-        resp = self.session.request("DELETE", f"{self.base_url}/api/deployments/{deployment_id}")
-        self._raise_for_status(resp)
+        self._json("DELETE", f"/api/deployments/{deployment_id}")
 
-    def delete_project(self, project_id: str) -> None:
-        resp = self.session.request("DELETE", f"{self.base_url}/api/projects/{project_id}")
-        self._raise_for_status(resp)
+    def get_deployment(self, deployment_id: str) -> dict:
+        return self._json("GET", f"/api/deployments/{deployment_id}")
+
+    def check_slug(self, slug: str, domain: str = "waystones.cloud") -> dict:
+        return self._json("GET", "/api/deployments/check-slug", params={"slug": slug, "domain": domain})
+
+    # ------------------------------------------------------------------
+    # Upload
+    # ------------------------------------------------------------------
 
     def get_upload_url(self, filename: str, is_private: bool = False, data_region: str = "default") -> dict:
-        return self._json("POST", "/api/upload", json={
+        return self._json("POST", "/api/upload", json_body={
             "filename": filename,
             "contentType": "application/octet-stream",
             "isPrivate": is_private,
             "dataRegion": data_region,
         })
 
-    # ------------------------------------------------------------------
-    # Step 2: upload file to R2 via presigned URL
-    # ------------------------------------------------------------------
     def upload_file(self, presigned_url: str, file_path: str, progress_callback=None):
         file_size = os.path.getsize(file_path)
-        # Read fully before uploading — R2 presigned URLs reject chunked/streaming
-        # transfers because they sign an exact Content-Length up front.
         with open(file_path, "rb") as f:
             data = f.read()
+
+        req = QNetworkRequest(QUrl(presigned_url))
+        req.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/octet-stream")
+
+        blocker = QgsBlockingNetworkRequest()
+        err = blocker.put(req, QByteArray(data))
+
+        if err == QgsBlockingNetworkRequest.ErrorCode.NetworkError:
+            raise WaystonesAPIError(f"Upload failed: {blocker.errorMessage()}")
+        reply = blocker.reply()
+        status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+        if status and not (200 <= int(status) < 300):
+            raise WaystonesAPIError(f"Upload failed: HTTP {status}")
+
         if progress_callback:
             progress_callback(file_size, file_size)
-        resp = requests.put(
-            presigned_url,
-            data=data,
-            headers={"Content-Type": "application/octet-stream"},
-        )
-        if not resp.ok:
-            raise WaystonesAPIError(f"Upload failed: HTTP {resp.status_code}")
 
     # ------------------------------------------------------------------
-    # Step 3: create project
+    # Create project
     # ------------------------------------------------------------------
+
     def create_project(
         self,
         name: str,
@@ -123,17 +185,12 @@ class WaystonesAPI:
             body["partitionStrategy"] = partition_strategy
         if partition_column is not None:
             body["partitionColumn"] = partition_column
-        return self._json("POST", "/api/projects", json=body)
+        return self._json("POST", "/api/projects", json_body=body)
 
     # ------------------------------------------------------------------
-    # Slug availability check (no side effects)
+    # Deploy
     # ------------------------------------------------------------------
-    def check_slug(self, slug: str, domain: str = "waystones.cloud") -> dict:
-        return self._json("GET", "/api/deployments/check-slug", params={"slug": slug, "domain": domain})
 
-    # ------------------------------------------------------------------
-    # Step 4: deploy
-    # ------------------------------------------------------------------
     def deploy(
         self,
         project_id: str,
@@ -142,7 +199,7 @@ class WaystonesAPI:
         mode: str = "on_demand",
         domain: str = "waystones.cloud",
     ) -> dict:
-        return self._json("POST", f"/api/projects/{project_id}/deploy", json={
+        return self._json("POST", f"/api/projects/{project_id}/deploy", json_body={
             "slug": slug,
             "mode": mode,
             "services": services,
@@ -150,14 +207,9 @@ class WaystonesAPI:
         })
 
     # ------------------------------------------------------------------
-    # Step 5: poll deployment status
+    # Tiles / STAC
     # ------------------------------------------------------------------
-    def get_deployment(self, deployment_id: str) -> dict:
-        return self._json("GET", f"/api/deployments/{deployment_id}")
 
-    # ------------------------------------------------------------------
-    # Optional: trigger tiles / STAC generation
-    # ------------------------------------------------------------------
     def get_tiles_status(self, project_id: str) -> dict:
         return self._json("GET", f"/api/projects/{project_id}/tiles")
 
@@ -180,7 +232,7 @@ class WaystonesAPI:
         }
         if simplification is not None:
             body["simplification"] = simplification
-        return self._json("POST", f"/api/projects/{project_id}/tiles", json=body)
+        return self._json("POST", f"/api/projects/{project_id}/tiles", json_body=body)
 
     def generate_stac(
         self,
@@ -191,4 +243,4 @@ class WaystonesAPI:
         body: dict = {"partitionStrategy": partition_strategy, "regenerate": True}
         if partition_column:
             body["partitionColumn"] = partition_column
-        return self._json("POST", f"/api/projects/{project_id}/stac", json=body)
+        return self._json("POST", f"/api/projects/{project_id}/stac", json_body=body)
