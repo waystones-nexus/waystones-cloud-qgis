@@ -9,7 +9,7 @@ Publish, host, and manage vector datasets from QGIS directly to [Waystones Cloud
 
 ## Key Features
 
-*   📦 **Native Multi-Layer Bundling** – Select any combination of open vector layers (Shapefiles, GeoJSON, PostGIS, GPKG, WFS, KML, etc.). The plugin packs them into a single GeoPackage automatically.
+*   📦 **Native Multi-Layer Bundling** – Select any combination of open vector layers (Shapefiles, GeoJSON, PostGIS, GPKG, GML, KML, etc.). The plugin packs them into a single GeoPackage automatically.
 *   🎛 **Dedicated "Projects" Panel** – Manage your cloud deployments right inside QGIS. View, edit metadata, change deployed services, manage API keys, and delete projects safely.
 *   📐 **Vector Tiles & STAC on Demand** – Turn on tile services with automatic zoom-range detection (based on layer extents) or manual overrides. Generate structured STAC catalogs partitioned by attribute columns.
 *   🔒 **Fine-grained Access Controls** – Deploy public endpoints or lock down datasets as private. Generate, label, and revoke project-specific API keys from the sidebar panel.
