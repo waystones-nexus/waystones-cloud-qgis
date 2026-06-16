@@ -117,6 +117,13 @@ class WaystonesAPI:
     def delete_deployment(self, deployment_id: str) -> None:
         self._json("DELETE", f"/api/deployments/{deployment_id}")
 
+    def retry_deployment(self, deployment_id: str) -> None:
+        self._json("POST", f"/api/deployments/{deployment_id}/retry")
+
+    def remove_deployment_service(self, deployment_id: str, service: str) -> dict:
+        return self._json("POST", f"/api/deployments/{deployment_id}/services",
+                          json_body={"action": "delete", "service": service})
+
     def get_deployment(self, deployment_id: str) -> dict:
         return self._json("GET", f"/api/deployments/{deployment_id}")
 
@@ -223,6 +230,8 @@ class WaystonesAPI:
         min_zoom: int = 0,
         max_zoom: int = 14,
         simplification: float = None,
+        exclude_layers: list[str] = None,
+        exclude_attributes: list[str] = None,
     ) -> dict:
         body = {
             "autoZoom": auto_zoom,
@@ -232,6 +241,10 @@ class WaystonesAPI:
         }
         if simplification is not None:
             body["simplification"] = simplification
+        if exclude_layers:
+            body["excludeLayers"] = exclude_layers
+        if exclude_attributes:
+            body["excludeAttributes"] = exclude_attributes
         return self._json("POST", f"/api/projects/{project_id}/tiles", json_body=body)
 
     def generate_stac(

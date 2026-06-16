@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QScrollArea,
-    QLineEdit, QPushButton, QCheckBox, QComboBox, QInputDialog,
+    QLineEdit, QPushButton, QCheckBox, QInputDialog,
     QTextEdit, QSpinBox, QLabel, QMessageBox, QDoubleSpinBox, QFrame,
     QListWidget, QListWidgetItem, QDialog,
 )
@@ -273,6 +273,11 @@ class ProjectsPanel(QWidget):
             remove_btn.clicked.connect(lambda _=False, did=dep_id: self._on_remove_services(did))
             btn_row.addWidget(chg_btn)
             btn_row.addWidget(remove_btn)
+            if status == "failed":
+                retry_btn = QPushButton("↻  Retry")
+                retry_btn.setObjectName("smallBtn")
+                retry_btn.clicked.connect(lambda _=False, did=dep_id: self._on_retry_deployment(did))
+                btn_row.addWidget(retry_btn)
             btn_row.addStretch()
             dep_layout.addLayout(btn_row)
 
@@ -625,12 +630,13 @@ class ProjectsPanel(QWidget):
         chk_stac  = QCheckBox("STAC catalog")
 
         existing_svcs = existing_dep.get("services") or [] if existing_dep else []
-        tiles_already_deployed = "tiles" in existing_svcs
+        tiles_already_deployed = "tiles" in existing_svcs or (project.get("tile_size_bytes") or 0) > 0
+        stac_already_deployed = "stac" in existing_svcs or (project.get("stac_catalog_size_bytes") or 0) > 0
 
         if existing_dep:
             chk_oapif.setChecked("oapif" in existing_svcs)
-            chk_tiles.setChecked("tiles" in existing_svcs)
-            chk_stac.setChecked("stac" in existing_svcs)
+            chk_tiles.setChecked(tiles_already_deployed)
+            chk_stac.setChecked(stac_already_deployed)
         else:
             chk_oapif.setChecked(True)
 
@@ -683,10 +689,17 @@ class ProjectsPanel(QWidget):
         zoom_hint = QLabel("Uncheck auto-detect to set manually")
         zoom_hint.setStyleSheet("font-size: 10px; color: #94a3b8; background: transparent;")
 
+        excl_layers_edit = QLineEdit()
+        excl_layers_edit.setPlaceholderText("layer1, layer2 (optional)")
+        excl_attrs_edit = QLineEdit()
+        excl_attrs_edit.setPlaceholderText("field1, field2 (optional)")
+
         tiles_fl.addRow("", chk_auto_zoom)
         tiles_fl.addRow("Zoom range:", zoom_row)
         tiles_fl.addRow("", zoom_hint)
         tiles_fl.addRow("Simplification:", spin_simplify)
+        tiles_fl.addRow("Exclude layers:", excl_layers_edit)
+        tiles_fl.addRow("Exclude fields:", excl_attrs_edit)
 
         tiles_note = QLabel()
         tiles_note.setStyleSheet("font-size: 10px; color: #6366f1; background: transparent;")
@@ -720,8 +733,6 @@ class ProjectsPanel(QWidget):
         layout.addWidget(tiles_note)
 
         # ── STAC options (shown when STAC is checked) ──────────────────
-        stac_already_deployed = "stac" in existing_svcs
-
         stac_frame = QFrame()
         stac_frame.setStyleSheet(
             "QFrame { background: #f8fafc; border: 1px solid #e2e8f0;"
@@ -732,16 +743,12 @@ class ProjectsPanel(QWidget):
         stac_fl.setSpacing(8)
         stac_fl.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
-        stac_strategy_combo = QComboBox()
-        stac_strategy_combo.addItem("Single file (no partitioning)", "none")
-        stac_strategy_combo.addItem("Split by custom column", "custom_column")
-
-        dm = project.get("data_model") or {}
-        existing_strategy = dm.get("partitionStrategy") or "none"
-        existing_column = dm.get("partitionColumn") or ""
-        idx = stac_strategy_combo.findData(existing_strategy)
-        if idx >= 0:
-            stac_strategy_combo.setCurrentIndex(idx)
+        existing_strategy = project.get("partition_strategy") or "none"
+        existing_column = project.get("partition_column") or ""
+        stac_strategy_combo = make_combo([
+            ("none", "Single file (no partitioning)"),
+            ("custom_column", "Split by custom column"),
+        ], existing_strategy)
 
         stac_col_edit = QLineEdit()
         stac_col_edit.setPlaceholderText("e.g. region, year")
@@ -789,6 +796,8 @@ class ProjectsPanel(QWidget):
 
         project_id = project["id"]
 
+        oapif_already_deployed = "oapif" in existing_svcs
+
         def _do_redeploy():
             slug = slug_edit.text().strip()
             domain = domain_combo.currentData()
@@ -799,12 +808,14 @@ class ProjectsPanel(QWidget):
 
             # Deploy endpoint only accepts "oapif" / "qgis"; tiles & stac are generated separately.
             deploy_svcs = []
-            if chk_oapif.isChecked(): deploy_svcs.append("oapif")
+            if chk_oapif.isChecked():
+                deploy_svcs.append("oapif")
 
+            removing_oapif = oapif_already_deployed and not chk_oapif.isChecked()
             adding_tiles = chk_tiles.isChecked() and not tiles_already_deployed
             adding_stac = chk_stac.isChecked() and not stac_already_deployed
 
-            if not deploy_svcs and not adding_tiles and not adding_stac:
+            if not deploy_svcs and not adding_tiles and not adding_stac and not removing_oapif:
                 status_lbl.setText("Select at least one service.")
                 status_lbl.setStyleSheet("color: #dc2626; font-size: 11px;")
                 return
@@ -814,8 +825,13 @@ class ProjectsPanel(QWidget):
             max_zoom = spin_max.value()
             simp = spin_simplify.value() if spin_simplify.value() > 0 else None
 
+            excl_layers = [s.strip() for s in excl_layers_edit.text().split(",") if s.strip()]
+            excl_attrs = [s.strip() for s in excl_attrs_edit.text().split(",") if s.strip()]
+
             stac_strategy = stac_strategy_combo.currentData()
             stac_col = stac_col_edit.text().strip() if stac_strategy == "custom_column" else None
+
+            dep_id = existing_dep["id"] if existing_dep else None
 
             deploy_btn.setEnabled(False)
             status_lbl.setText("Deploying…")
@@ -826,15 +842,21 @@ class ProjectsPanel(QWidget):
                 try:
                     api = WaystonesAPI(api_key)
                     label_parts = []
+                    if removing_oapif and dep_id:
+                        api.remove_deployment_service(dep_id, "oapif")
+                        self._log("OAPIF service removed.")
+                        label_parts.append("−oapif")
                     if deploy_svcs:
                         result = api.deploy(project_id, slug, deploy_svcs, domain=domain)
-                        dep_id = result.get("deploymentId", "")
-                        self._log(f"Deploy queued: {slug}.{domain} — {dep_id}")
+                        new_dep_id = result.get("deploymentId", "")
+                        self._log(f"Deploy queued: {slug}.{domain} — {new_dep_id}")
                         label_parts.append(f"{slug}.{domain}")
                     if adding_tiles:
                         api.generate_tiles(project_id, auto_zoom=auto_zoom,
                                            min_zoom=min_zoom, max_zoom=max_zoom,
-                                           simplification=simp)
+                                           simplification=simp,
+                                           exclude_layers=excl_layers or None,
+                                           exclude_attributes=excl_attrs or None)
                         self._log("Tile generation queued.")
                         label_parts.append("tiles")
                         threading.Thread(
@@ -898,6 +920,21 @@ class ProjectsPanel(QWidget):
                     self._project_fetched.emit(api.get_project(self._selected_project["id"]))
             except WaystonesAPIError as e:
                 self._log(f"ERROR removing deployment: {e}")
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _on_retry_deployment(self, deployment_id: str):
+        api_key = self._get_api_key()
+
+        def _run():
+            try:
+                api = WaystonesAPI(api_key)
+                api.retry_deployment(deployment_id)
+                self._log(f"Retry triggered for {deployment_id}.")
+                if self._selected_project:
+                    self._project_fetched.emit(api.get_project(self._selected_project["id"]))
+            except WaystonesAPIError as e:
+                self._log(f"ERROR retrying deployment: {e}")
 
         threading.Thread(target=_run, daemon=True).start()
 

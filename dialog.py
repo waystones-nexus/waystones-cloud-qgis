@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 from PyQt6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QScrollArea, QWidget,
-    QLineEdit, QPushButton, QCheckBox, QComboBox,
+    QLineEdit, QPushButton, QCheckBox,
     QTextEdit, QProgressBar, QGroupBox, QSpinBox, QLabel,
     QMessageBox, QStackedWidget, QDoubleSpinBox, QFrame,
     QListWidget, QListWidgetItem,
@@ -207,8 +207,12 @@ class WaystonesDialog(QDialog):
         steps_title.setStyleSheet("font-size: 11px; font-weight: 700; color: #4338ca; background: transparent;")
         steps_layout.addWidget(steps_title)
 
+        step1 = QLabel('1.  Log in or create a free account at  <a href="https://waystones.cloud" style="color:#4338ca;">waystones.cloud</a>')
+        step1.setOpenExternalLinks(True)
+        step1.setStyleSheet("font-size: 11px; color: #4338ca; background: transparent;")
+        steps_layout.addWidget(step1)
+
         for step in (
-            "1.  Log in at  waystones.cloud",
             "2.  Open the  API  page from the sidebar",
             "3.  Click  Create API key  and copy it here",
         ):
@@ -668,9 +672,10 @@ class WaystonesDialog(QDialog):
         stac_form.setContentsMargins(16, 4, 0, 4)
         stac_form.setSpacing(6)
 
-        self._stac_partition_combo = QComboBox()
-        self._stac_partition_combo.addItem("None (flat catalog)", "none")
-        self._stac_partition_combo.addItem("By column value", "custom_column")
+        self._stac_partition_combo = make_combo([
+            ("none", "Single file (no partitioning)"),
+            ("custom_column", "Split by custom column"),
+        ])
         stac_form.addRow("Partition strategy:", self._stac_partition_combo)
 
         self._stac_partition_col = QLineEdit()
@@ -1381,6 +1386,7 @@ class WaystonesDialog(QDialog):
                 "eu" if self._chk_eu.isChecked() else "default",
                 self._chk_private.isChecked(),
                 data_model, partition_strategy, partition_column,
+                "always_on" if self._chk_always_on.isChecked() else "on_demand",
             ),
             daemon=True,
         ).start()
@@ -1455,6 +1461,7 @@ class WaystonesDialog(QDialog):
         auto_zoom, min_zoom, max_zoom, simplification,
         data_region, is_private,
         data_model, partition_strategy, partition_column,
+        mode="on_demand",
     ):
         try:
             api = WaystonesAPI(api_key)
@@ -1493,7 +1500,7 @@ class WaystonesDialog(QDialog):
 
             if services:
                 self._log_line.emit(f"Deploying with slug '{slug}'…")
-                deploy_result = api.deploy(project_id, slug, services, domain=domain)
+                deploy_result = api.deploy(project_id, slug, services, mode=mode, domain=domain)
                 self._deployment_id = deploy_result["deploymentId"]
                 self._log_line.emit(f"Deployment queued: {self._deployment_id}")
                 QTimer.singleShot(0, self._start_poll)
