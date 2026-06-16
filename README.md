@@ -41,13 +41,8 @@ Then, enable the plugin in QGIS under **Plugins** ➔ **Manage and Install Plugi
 
 ## How It Works
 
-```mermaid
-graph TD
-    A[Select QGIS Layers] --> B[Auto-package into GeoPackage]
-    B --> C[Upload via QgsNetworkAccessManager]
-    C --> D[Waystones Cloud Provisioning]
-    D --> E[Real-time Provisioning Log]
-    E --> F[Live Endpoints: OAPIF / Tiles / STAC]
+```text
+Select QGIS Layers ───> Auto-package (GPKG) ───> Upload (QgsNetworkAccessManager) ───> Waystones Cloud ───> Live Endpoints (OAPIF/Tiles/STAC)
 ```
 
 ---
