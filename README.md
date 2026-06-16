@@ -4,14 +4,14 @@ Publish any vector layer open in QGIS directly to [Waystones Cloud](https://ways
 
 ## What it does
 
-1. Exports the selected QGIS layer to GeoPackage (any format QGIS can open works — shapefiles, GeoJSON, PostGIS, WFS, KML, etc.)
+1. Exports the selected QGIS layer to GeoPackage (any format QGIS can open works — shapefiles, GeoJSON, PostGIS, KML, etc.)
 2. Uploads the GPKG to Waystones Cloud
 3. Creates a project and deploys it with the slug and services you chose
 4. Streams the provisioning log in real time until the endpoint is live
 
 ## Requirements
 
-- QGIS 3.16 or later (uses bundled Python + `requests`)
+- QGIS 4.0 or later (uses bundled Python + `requests`)
 - A [Waystones Cloud](https://waystones.cloud) account and API key
 
 ## Installation
