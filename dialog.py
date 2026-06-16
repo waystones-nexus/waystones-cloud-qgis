@@ -2,6 +2,7 @@ import os
 import re
 import tempfile
 import threading
+from urllib.parse import urlparse
 
 from PyQt6.QtWidgets import (
     QButtonGroup, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QScrollArea, QWidget,
@@ -19,7 +20,8 @@ from qgis.core import (
     QgsSingleSymbolRenderer, QgsCategorizedSymbolRenderer,
     QgsSimpleMarkerSymbolLayer, QgsSimpleLineSymbolLayer,
     QgsSimpleFillSymbolLayer, QgsLinePatternFillSymbolLayer,
-    QgsVectorLayerSimpleLabeling, QgsStyle,
+    QgsVectorLayerSimpleLabeling, QgsStyle, QgsApplication,
+    QgsAuthMethodConfig,
 )
 
 from .api import WaystonesAPI, WaystonesAPIError
@@ -872,15 +874,53 @@ class WaystonesDialog(QDialog):
     # Settings persistence
     # ------------------------------------------------------------------
 
-    def _load_settings(self):
+    # ------------------------------------------------------------------
+    # Secure API key helpers (QgsAuthManager → QSettings fallback)
+    # ------------------------------------------------------------------
+
+    _AUTH_CONFIG_ID_KEY = "waystones_cloud/auth_config_id"
+    _AUTH_CONFIG_NAME = "Waystones Cloud API key"
+
+    def _load_api_key_secure(self) -> str:
+        am = QgsApplication.authManager()
+        config_id = QSettings().value(self._AUTH_CONFIG_ID_KEY, "")
+        if config_id and am and not am.isDisabled():
+            cfg = QgsAuthMethodConfig()
+            if am.loadAuthenticationConfig(config_id, cfg, True):
+                return cfg.config("password", "")
+        # Fallback: plain QSettings (pre-migration or auth manager disabled)
+        return QSettings().value(SETTINGS_KEY_API_KEY, "")
+
+    def _save_api_key_secure(self, key: str) -> None:
+        am = QgsApplication.authManager()
         s = QSettings()
-        self._api_key_edit.setText(s.value(SETTINGS_KEY_API_KEY, ""))
+        if am and not am.isDisabled():
+            config_id = s.value(self._AUTH_CONFIG_ID_KEY, "")
+            cfg = QgsAuthMethodConfig()
+            cfg.setMethod("Basic")
+            cfg.setName(self._AUTH_CONFIG_NAME)
+            cfg.setConfig("username", "waystones")
+            cfg.setConfig("password", key)
+            if config_id and am.loadAuthenticationConfig(config_id, QgsAuthMethodConfig(), False):
+                cfg.setId(config_id)
+                am.updateAuthenticationConfig(cfg)
+            else:
+                am.storeAuthenticationConfig(cfg)
+                s.setValue(self._AUTH_CONFIG_ID_KEY, cfg.id())
+            # Remove plaintext remnant if present
+            s.remove(SETTINGS_KEY_API_KEY)
+        else:
+            s.setValue(SETTINGS_KEY_API_KEY, key)
+
+    def _load_settings(self):
+        self._api_key_edit.setText(self._load_api_key_secure())
+        s = QSettings()
         self._chk_eu.setChecked(s.value(SETTINGS_KEY_EU, "") == "eu")
         self._chk_private.setChecked(s.value(SETTINGS_KEY_IS_PRIVATE, False, type=bool))
 
     def _save_settings(self):
+        self._save_api_key_secure(self._api_key_edit.text().strip())
         s = QSettings()
-        s.setValue(SETTINGS_KEY_API_KEY, self._api_key_edit.text().strip())
         s.setValue(SETTINGS_KEY_EU, "eu" if self._chk_eu.isChecked() else "default")
         s.setValue(SETTINGS_KEY_IS_PRIVATE, self._chk_private.isChecked())
 
@@ -1213,6 +1253,13 @@ class WaystonesDialog(QDialog):
 
         keywords = [k.strip() for k in self._meta_keywords.text().split(",") if k.strip()]
 
+        meta_url = self._meta_url.text().strip()
+        meta_terms = self._meta_terms.text().strip()
+        if meta_url and not self._is_valid_url(meta_url):
+            raise ValueError(f"Dataset URL is not a valid URL: {meta_url!r}")
+        if meta_terms and not self._is_valid_url(meta_terms):
+            raise ValueError(f"Terms of service URL is not a valid URL: {meta_terms!r}")
+
         return {
             "name": name,
             "namespace": re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-"),
@@ -1232,11 +1279,19 @@ class WaystonesDialog(QDialog):
                 "accrualPeriodicity": self._meta_periodicity.currentData() or "",
                 "temporalExtentFrom": self._meta_temporal_from.text().strip(),
                 "temporalExtentTo": self._meta_temporal_to.text().strip(),
-                "url": self._meta_url.text().strip(),
-                "termsOfService": self._meta_terms.text().strip(),
+                "url": meta_url,
+                "termsOfService": meta_terms,
                 "spatialExtent": spatial_extent,
             },
         }
+
+    @staticmethod
+    def _is_valid_url(url: str) -> bool:
+        try:
+            p = urlparse(url)
+            return p.scheme in ("http", "https") and bool(p.netloc)
+        except Exception:
+            return False
 
     # ------------------------------------------------------------------
     # API key verification

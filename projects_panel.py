@@ -1,6 +1,7 @@
 import re
 import threading
 import time
+from urllib.parse import urlparse
 
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QScrollArea,
@@ -1133,6 +1134,13 @@ class ProjectsPanel(QWidget):
                     "color_btn": color_btn,
                 })
 
+        def _is_valid_url(url: str) -> bool:
+            try:
+                p = urlparse(url)
+                return p.scheme in ("http", "https") and bool(p.netloc)
+            except Exception:
+                return False
+
         # ── Wire save ──────────────────────────────────────────────────
         def _save():
             # Auto-update spatial extent from checked QGIS layers if available
@@ -1140,6 +1148,17 @@ class ProjectsPanel(QWidget):
             ext = self._checked_extent()
             if ext:
                 spatial_extent = ext
+
+            meta_url = e_url.text().strip()
+            meta_terms = e_terms.text().strip()
+            if meta_url and not _is_valid_url(meta_url):
+                status_lbl.setText(f"Invalid Dataset URL")
+                status_lbl.setStyleSheet("color: #dc2626; font-size: 11px;")
+                return
+            if meta_terms and not _is_valid_url(meta_terms):
+                status_lbl.setText(f"Invalid Terms of Service URL")
+                status_lbl.setStyleSheet("color: #dc2626; font-size: 11px;")
+                return
 
             new_meta = {
                 "contactName": e_contact_name.text().strip(),
@@ -1151,8 +1170,8 @@ class ProjectsPanel(QWidget):
                 "accessRights": e_access.currentData() or "",
                 "purpose": e_purpose.toPlainText().strip(),
                 "accrualPeriodicity": e_periodicity.currentData() or "",
-                "url": e_url.text().strip(),
-                "termsOfService": e_terms.text().strip(),
+                "url": meta_url,
+                "termsOfService": meta_terms,
                 "spatialExtent": spatial_extent,
                 "temporalExtentFrom": meta.get("temporalExtentFrom") or "",
                 "temporalExtentTo": meta.get("temporalExtentTo") or "",
