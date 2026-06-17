@@ -34,12 +34,13 @@ class ProjectsPanel(QWidget):
     _project_fetched = pyqtSignal(dict)
     _project_fetch_err = pyqtSignal(str)
 
-    def __init__(self, get_api_key, log, request_replace, checked_extent, parent=None):
+    def __init__(self, get_api_key, log, request_replace, checked_extent, set_deploy_action=None, parent=None):
         super().__init__(parent)
         self._get_api_key = get_api_key
         self._log = log
         self._request_replace = request_replace
         self._checked_extent = checked_extent
+        self._set_deploy_action = set_deploy_action or (lambda fn: None)
         self._selected_project: dict | None = None
 
         self._build_ui()
@@ -175,6 +176,7 @@ class ProjectsPanel(QWidget):
 
     def _show_project_detail(self, project: dict):
         self._selected_project = project
+        self._set_deploy_action(None)
 
         w = QWidget()
         w.setStyleSheet("background: white;")
@@ -270,7 +272,7 @@ class ProjectsPanel(QWidget):
             )
             remove_btn = QPushButton("Remove Services")
             remove_btn.setObjectName("smallBtn")
-            remove_btn.clicked.connect(lambda _=False, did=dep_id: self._on_remove_services(did))
+            remove_btn.clicked.connect(lambda _=False, did=dep_id, pid=project["id"]: self._on_remove_services(did, pid))
             btn_row.addWidget(chg_btn)
             btn_row.addWidget(remove_btn)
             if status == "failed":
@@ -603,13 +605,7 @@ class ProjectsPanel(QWidget):
 
         title = QLabel("Change Services" if existing_dep else "Deploy")
         title.setStyleSheet("font-size: 14px; font-weight: 700; color: #1e293b;")
-        deploy_btn = QPushButton("Deploy")
-        deploy_btn.setObjectName("deployBtn")
-        title_row = QHBoxLayout()
-        title_row.addWidget(title)
-        title_row.addStretch()
-        title_row.addWidget(deploy_btn)
-        layout.addLayout(title_row)
+        layout.addWidget(title)
 
         form = QFormLayout()
         form.setSpacing(8)
@@ -618,12 +614,58 @@ class ProjectsPanel(QWidget):
         slug_row = QHBoxLayout()
         slug_row.setSpacing(6)
         slug_edit = QLineEdit()
-        slug_edit.setText(existing_dep.get("slug", project.get("name", "")) if existing_dep else "")
+        if existing_dep:
+            initial_slug = existing_dep.get("slug", "")
+        else:
+            initial_slug = re.sub(r"[^a-z0-9]+", "-", project.get("name", "").lower()).strip("-")
+        slug_edit.setText(initial_slug)
+        if existing_dep:
+            slug_edit.setReadOnly(True)
+            slug_edit.setToolTip("Remove the current deployment to change the slug.")
+            slug_edit.setStyleSheet("background: #f1f5f9; color: #64748b;")
         cur_domain = existing_dep.get("service_domain", "waystones.cloud") if existing_dep else None
         domain_combo = make_domain_combo(cur_domain)
         slug_row.addWidget(slug_edit, 1)
         slug_row.addWidget(domain_combo)
+
+        slug_status_lbl = QLabel()
+        slug_status_lbl.setStyleSheet("font-size: 11px;")
+
+        if not existing_dep:
+            check_btn = QPushButton("Check")
+            check_btn.setObjectName("smallBtn")
+            check_btn.setFixedWidth(60)
+            slug_row.addWidget(check_btn)
+
+            def _do_check_slug():
+                slug = slug_edit.text().strip()
+                domain = domain_combo.currentData()
+                api_key = self._get_api_key()
+                if not api_key or not slug:
+                    slug_status_lbl.setText("Enter API key and slug first.")
+                    slug_status_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
+                    return
+                check_btn.setEnabled(False)
+                slug_status_lbl.setText("Checking…")
+                slug_status_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
+                try:
+                    result = WaystonesAPI(api_key).check_slug(slug, domain)
+                    if result.get("available"):
+                        text, color = f"✓ Available on {domain}", "#6366f1"
+                    else:
+                        text, color = f"✗ {result.get('error', 'Not available.')}", "#dc2626"
+                except Exception as e:
+                    text, color = f"Error: {e}", "#dc2626"
+                slug_status_lbl.setText(text)
+                slug_status_lbl.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: 600;")
+                check_btn.setEnabled(True)
+
+            check_btn.clicked.connect(_do_check_slug)
+            slug_edit.textChanged.connect(lambda: slug_status_lbl.setText(""))
+            domain_combo.currentIndexChanged.connect(lambda: slug_status_lbl.setText(""))
+
         form.addRow("Slug: *", slug_row)
+        form.addRow("", slug_status_lbl)
 
         chk_oapif = QCheckBox("OGC API Features (OAPIF)")
         chk_tiles = QCheckBox("Vector tiles")
@@ -833,7 +875,7 @@ class ProjectsPanel(QWidget):
 
             dep_id = existing_dep["id"] if existing_dep else None
 
-            deploy_btn.setEnabled(False)
+            self._set_deploy_action(None)
             status_lbl.setText("Deploying…")
             status_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
             api_key = self._get_api_key()
@@ -851,6 +893,12 @@ class ProjectsPanel(QWidget):
                         new_dep_id = result.get("deploymentId", "")
                         self._log(f"Deploy queued: {slug}.{domain} — {new_dep_id}")
                         label_parts.append(f"{slug}.{domain}")
+                        if new_dep_id:
+                            threading.Thread(
+                                target=self._poll_deploy_status,
+                                args=(api_key, new_dep_id, project_id),
+                                daemon=True,
+                            ).start()
                     if adding_tiles:
                         api.generate_tiles(project_id, auto_zoom=auto_zoom,
                                            min_zoom=min_zoom, max_zoom=max_zoom,
@@ -887,22 +935,22 @@ class ProjectsPanel(QWidget):
                         status_lbl.setStyleSheet("color: #dc2626; font-size: 11px;"),
                     ))
                 finally:
-                    QTimer.singleShot(0, lambda: deploy_btn.setEnabled(True))
+                    QTimer.singleShot(0, lambda: self._set_deploy_action(_do_redeploy))
 
             threading.Thread(target=_run, daemon=True).start()
 
-        deploy_btn.clicked.connect(_do_redeploy)
+        self._set_deploy_action(_do_redeploy)
         self._detail_scroll.setWidget(w)
 
-    def _on_remove_services(self, deployment_id: str):
+    def _on_remove_services(self, deployment_id: str, project_id: str):
         msg = QMessageBox(self)
         msg.setWindowTitle("Remove Services")
         msg.setIcon(QMessageBox.Icon.Warning)
         msg.setStyleSheet(MSGBOX_QSS)
-        msg.setText("Remove this deployment?")
+        msg.setText("Remove all services?")
         msg.setInformativeText(
-            "The deployment URL will be freed. The project data remains. "
-            "You can redeploy with a new slug afterwards."
+            "This will remove the deployment, tiles, and STAC catalog. "
+            "The source data remains. You can redeploy afterwards."
         )
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
         msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
@@ -915,11 +963,19 @@ class ProjectsPanel(QWidget):
             try:
                 api = WaystonesAPI(api_key)
                 api.delete_deployment(deployment_id)
-                self._log(f"Deployment {deployment_id} removed.")
+                try:
+                    api.delete_tiles(project_id)
+                except Exception:
+                    pass
+                try:
+                    api.delete_stac(project_id)
+                except Exception:
+                    pass
+                self._log("All services removed.")
                 if self._selected_project:
                     self._project_fetched.emit(api.get_project(self._selected_project["id"]))
             except WaystonesAPIError as e:
-                self._log(f"ERROR removing deployment: {e}")
+                self._log(f"ERROR removing services: {e}")
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -982,6 +1038,33 @@ class ProjectsPanel(QWidget):
             if status and status not in ("running",):
                 err = ts.get("errorMessage") or status
                 self._log(f"✗ Tile generation failed: {err}")
+                break
+
+    def _poll_deploy_status(self, api_key: str, deployment_id: str, project_id: str):
+        """Background thread: poll deployment until ready, forward pipeline log lines."""
+        log_offset = 0
+        for _ in range(120):  # up to ~6 minutes at 3 s intervals
+            time.sleep(3)
+            try:
+                data = WaystonesAPI(api_key).get_deployment(deployment_id)
+            except Exception:
+                break
+            logs = data.get("pipeline_log") or []
+            for line in logs[log_offset:]:
+                self._log(line)
+            log_offset = len(logs)
+            status = data.get("status", "")
+            if status == "ready":
+                self._log("✓ Deployment ready.")
+                try:
+                    project = WaystonesAPI(api_key).get_project(project_id)
+                    self._project_fetched.emit(project)
+                except Exception:
+                    pass
+                break
+            if status in ("failed", "deleted"):
+                err = data.get("error_message") or status
+                self._log(f"✗ Deployment failed: {err}")
                 break
 
     def _poll_stac_status(self, api_key: str, project_id: str):

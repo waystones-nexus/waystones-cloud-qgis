@@ -127,6 +127,12 @@ class WaystonesAPI:
     def get_deployment(self, deployment_id: str) -> dict:
         return self._json("GET", f"/api/deployments/{deployment_id}")
 
+    def delete_tiles(self, project_id: str) -> None:
+        self._json("DELETE", f"/api/projects/{project_id}/tiles")
+
+    def delete_stac(self, project_id: str) -> None:
+        self._json("DELETE", f"/api/projects/{project_id}/stac")
+
     def check_slug(self, slug: str, domain: str = "waystones.cloud") -> dict:
         return self._json("GET", "/api/deployments/check-slug", params={"slug": slug, "domain": domain})
 

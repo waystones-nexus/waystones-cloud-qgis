@@ -141,6 +141,7 @@ class WaystonesDialog(QDialog):
             log=self._log_line.emit,
             request_replace=self._on_replace_gpkg,
             checked_extent=self._checked_layers_extent,
+            set_deploy_action=self._set_projects_deploy_action,
         )
         self._pages.addWidget(self._projects_panel)
         top.addWidget(self._pages, 1)
@@ -715,17 +716,33 @@ class WaystonesDialog(QDialog):
     # Nav change handler
     # ------------------------------------------------------------------
 
+    def _set_projects_deploy_action(self, fn):
+        """Called by ProjectsPanel to connect or disconnect the bottom Deploy button."""
+        try:
+            self._deploy_btn.clicked.disconnect()
+        except (RuntimeError, TypeError):
+            pass
+        if fn is not None:
+            self._deploy_btn.setEnabled(True)
+            self._deploy_btn.setToolTip("")
+            self._deploy_btn.clicked.connect(fn)
+        else:
+            self._deploy_btn.setEnabled(False)
+            self._deploy_btn.setToolTip("")
+
     def _on_nav_changed(self, index: int):
         self._nav_btns[index].setChecked(True)
         self._pages.setCurrentIndex(index)
         is_projects = (index == 5)
-        # The bottom-bar Deploy button drives the publish flow only; the Projects
-        # tab has its own in-panel action buttons, so disable it there.
         if is_projects:
-            self._deploy_btn.setEnabled(False)
-            self._deploy_btn.setToolTip("Use the action buttons inside the project panel.")
+            self._set_projects_deploy_action(None)
             self._projects_panel.load_if_empty()
         else:
+            try:
+                self._deploy_btn.clicked.disconnect()
+            except RuntimeError:
+                pass
+            self._deploy_btn.clicked.connect(self._on_deploy)
             self._deploy_btn.setEnabled(True)
             self._deploy_btn.setToolTip("")
 
@@ -1386,7 +1403,7 @@ class WaystonesDialog(QDialog):
                 "eu" if self._chk_eu.isChecked() else "default",
                 self._chk_private.isChecked(),
                 data_model, partition_strategy, partition_column,
-                "always_on" if self._chk_always_on.isChecked() else "on_demand",
+                "on_demand",
             ),
             daemon=True,
         ).start()

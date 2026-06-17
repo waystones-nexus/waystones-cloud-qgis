@@ -56,6 +56,9 @@ def make_domain_combo(current: str | None = None) -> QComboBox:
     cb.setFixedWidth(88)
     for d in DOMAINS:
         cb.addItem(f".{d.split('.', 1)[1]}", d)
+    view = cb.view()
+    view.setStyleSheet(COMBO_VIEW_SS)
+    view.setItemDelegate(_IndigoItemDelegate(view))
     if current:
         idx = cb.findData(current)
         if idx >= 0:
