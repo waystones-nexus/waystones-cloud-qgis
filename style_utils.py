@@ -1,5 +1,5 @@
 from qgis.core import (
-    QgsWkbTypes,
+    QgsWkbTypes, QgsUnitTypes,
     QgsSingleSymbolRenderer, QgsCategorizedSymbolRenderer,
     QgsSimpleMarkerSymbolLayer, QgsSimpleLineSymbolLayer,
     QgsSimpleFillSymbolLayer, QgsLinePatternFillSymbolLayer,
@@ -7,6 +7,21 @@ from qgis.core import (
 )
 
 DEFAULT_COLOR = "#4A90D9"
+
+_MM_TO_PX = 96.0 / 25.4   # ~3.7795 at 96 DPI
+_PT_TO_PX = 96.0 / 72.0   # ~1.3333
+
+
+def _to_px(value: float, unit) -> float:
+    """Convert a QGIS render-unit value to CSS/MapLibre pixels."""
+    if unit == QgsUnitTypes.RenderPixels:
+        return round(value, 2)
+    if unit == QgsUnitTypes.RenderPoints:
+        return round(value * _PT_TO_PX, 2)
+    if unit == QgsUnitTypes.RenderInches:
+        return round(value * 96.0, 2)
+    # RenderMillimeters, RenderMapUnits, unknown → treat as mm
+    return round(value * _MM_TO_PX, 2)
 
 _PEN_DASH = {
     "solidline": "solid", "dashline": "dashed", "dotline": "dotted",
@@ -38,7 +53,7 @@ def renderer_to_layer_style(layer) -> dict:
 
                 if isinstance(sl, QgsSimpleMarkerSymbolLayer):
                     style["pointOpacity"] = opacity
-                    style["pointSize"] = sl.size()
+                    style["pointSize"] = _to_px(sl.size(), sl.sizeUnit())
                     shape_name = sl.shape().name.lower()
                     if "square" in shape_name or "rectangle" in shape_name:
                         style["pointIcon"] = "square"
@@ -52,7 +67,7 @@ def renderer_to_layer_style(layer) -> dict:
 
                 elif isinstance(sl, QgsSimpleLineSymbolLayer):
                     style["lineOpacity"] = opacity
-                    style["lineWidth"] = sl.width()
+                    style["lineWidth"] = _to_px(sl.width(), sl.widthUnit())
                     style["lineDash"] = _PEN_DASH.get(sl.penStyle().name.lower(), "solid")
                     break
 
@@ -61,7 +76,7 @@ def renderer_to_layer_style(layer) -> dict:
                     stroke = sl.strokeStyle()
                     style["showOutline"] = stroke.name.lower() != "nopen"
                     if style["showOutline"]:
-                        style["lineWidth"] = sl.strokeWidth()
+                        style["lineWidth"] = _to_px(sl.strokeWidth(), sl.strokeWidthUnit())
                         style["lineDash"] = _PEN_DASH.get(stroke.name.lower(), "solid")
                     hatch = _BRUSH_HATCH.get(sl.brushStyle().name.lower())
                     if hatch:
@@ -70,7 +85,7 @@ def renderer_to_layer_style(layer) -> dict:
 
                 elif isinstance(sl, QgsLinePatternFillSymbolLayer):
                     style["fillOpacity"] = opacity
-                    style["hatchSpacing"] = sl.distance()
+                    style["hatchSpacing"] = _to_px(sl.distance(), sl.distanceUnit())
                     angle = sl.lineAngle() % 180
                     if angle < 5:
                         style["hatchStyle"] = "horizontal"
@@ -104,10 +119,10 @@ def renderer_to_layer_style(layer) -> dict:
                     for i in range(sym.symbolLayerCount()):
                         sl = sym.symbolLayer(i)
                         if isinstance(sl, QgsSimpleMarkerSymbolLayer):
-                            entry["pointSize"] = sl.size()
+                            entry["pointSize"] = _to_px(sl.size(), sl.sizeUnit())
                             entry["pointOpacity"] = opacity
                         elif isinstance(sl, QgsSimpleLineSymbolLayer):
-                            entry["lineWidth"] = sl.width()
+                            entry["lineWidth"] = _to_px(sl.width(), sl.widthUnit())
                             entry["lineOpacity"] = opacity
                         elif isinstance(sl, QgsSimpleFillSymbolLayer):
                             entry["fillOpacity"] = opacity
@@ -137,11 +152,11 @@ def renderer_to_layer_style(layer) -> dict:
                 style["labelSettings"] = {
                     "enabled": True,
                     "propertyId": settings.fieldName,
-                    "fontSize": int(fmt.size()),
+                    "fontSize": round(_to_px(fmt.size(), fmt.sizeUnit()), 1),
                     "color": fmt.color().name(),
                     "fontFamily": fmt.font().family(),
                     "haloEnabled": fmt.buffer().enabled(),
-                    "haloSize": fmt.buffer().size(),
+                    "haloSize": _to_px(fmt.buffer().size(), fmt.buffer().sizeUnit()),
                     "haloColor": fmt.buffer().color().name(),
                 }
     except Exception:

@@ -15,12 +15,13 @@ def _ensure_qgis(qgis_app):
 
 
 from qgis.core import (  # noqa: E402
+    QgsUnitTypes,
     QgsSingleSymbolRenderer, QgsCategorizedSymbolRenderer,
     QgsSimpleMarkerSymbolLayer, QgsSimpleLineSymbolLayer,
     QgsSimpleFillSymbolLayer, QgsLinePatternFillSymbolLayer,
     QgsVectorLayerSimpleLabeling,
 )
-from style_utils import renderer_to_layer_style, DEFAULT_COLOR  # noqa: E402
+from style_utils import renderer_to_layer_style, DEFAULT_COLOR, _MM_TO_PX, _PT_TO_PX  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -45,31 +46,39 @@ def _layer(renderer=None, labeling=None):
     return lyr
 
 
-def _marker_sl(size=4.0, shape_name="circle"):
+def _marker_sl(size=4.0, shape_name="circle",
+               size_unit=QgsUnitTypes.RenderMillimeters):
     sl = MagicMock(spec=QgsSimpleMarkerSymbolLayer)
     sl.size.return_value = size
+    sl.sizeUnit.return_value = size_unit
     sl.shape.return_value.name.lower.return_value = shape_name
     return sl
 
 
-def _line_sl(width=1.0, pen_name="solidline"):
+def _line_sl(width=1.0, pen_name="solidline",
+             width_unit=QgsUnitTypes.RenderMillimeters):
     sl = MagicMock(spec=QgsSimpleLineSymbolLayer)
     sl.width.return_value = width
+    sl.widthUnit.return_value = width_unit
     sl.penStyle.return_value.name.lower.return_value = pen_name
     return sl
 
 
-def _fill_sl(opacity=1.0, stroke_name="solidline", stroke_width=0.5, brush_name="solid"):
+def _fill_sl(opacity=1.0, stroke_name="solidline", stroke_width=0.5, brush_name="solid",
+             stroke_width_unit=QgsUnitTypes.RenderMillimeters):
     sl = MagicMock(spec=QgsSimpleFillSymbolLayer)
     sl.strokeStyle.return_value.name.lower.return_value = stroke_name
     sl.strokeWidth.return_value = stroke_width
+    sl.strokeWidthUnit.return_value = stroke_width_unit
     sl.brushStyle.return_value.name.lower.return_value = brush_name
     return sl
 
 
-def _line_pattern_sl(distance=10.0, angle=0.0):
+def _line_pattern_sl(distance=10.0, angle=0.0,
+                     distance_unit=QgsUnitTypes.RenderMillimeters):
     sl = MagicMock(spec=QgsLinePatternFillSymbolLayer)
     sl.distance.return_value = distance
+    sl.distanceUnit.return_value = distance_unit
     sl.lineAngle.return_value = angle
     return sl
 
@@ -116,7 +125,7 @@ class TestSingleMarker:
         assert result["type"] == "simple"
         assert result["simpleColor"] == "#aabbcc"
         assert result["pointIcon"] == "circle"
-        assert result["pointSize"] == 4.0
+        assert result["pointSize"] == pytest.approx(4.0 * _MM_TO_PX, rel=1e-3)
         assert result["pointOpacity"] == 0.8
 
     def test_square_shape(self):
@@ -155,7 +164,7 @@ class TestSingleLine:
         lyr = _layer(_single_renderer(_sym("#112233", 1.0, [sl])))
         result = renderer_to_layer_style(lyr)
         assert result["lineDash"] == "solid"
-        assert result["lineWidth"] == 2.0
+        assert result["lineWidth"] == pytest.approx(2.0 * _MM_TO_PX, rel=1e-3)
         assert result["lineOpacity"] == 1.0
 
     def test_dashed_line(self):
@@ -185,7 +194,7 @@ class TestSingleFill:
         result = renderer_to_layer_style(lyr)
         assert result["fillOpacity"] == 0.9
         assert result["showOutline"] is True
-        assert result["lineWidth"] == 0.5
+        assert result["lineWidth"] == pytest.approx(0.5 * _MM_TO_PX, rel=1e-3)
         assert result["lineDash"] == "solid"
         assert "hatchStyle" not in result
 
@@ -221,7 +230,7 @@ class TestLinePatternFill:
         lyr = _layer(_single_renderer(_sym(symbol_layers=[sl])))
         result = renderer_to_layer_style(lyr)
         assert result["hatchStyle"] == "horizontal"
-        assert result["hatchSpacing"] == 8.0
+        assert result["hatchSpacing"] == pytest.approx(8.0 * _MM_TO_PX, rel=1e-3)
 
     def test_vertical_angle_90(self):
         sl = _line_pattern_sl(angle=90.0)
@@ -287,7 +296,7 @@ class TestCategorized:
         renderer = _categorized_renderer("cls", [("X", sym)])
         result = renderer_to_layer_style(_layer(renderer))
         entry = result["categorizedSettings"]["X"]
-        assert entry["pointSize"] == 3.0
+        assert entry["pointSize"] == pytest.approx(3.0 * _MM_TO_PX, rel=1e-3)
         assert entry["pointOpacity"] == 0.5
 
     def test_line_category_has_width_and_opacity(self):
@@ -296,7 +305,7 @@ class TestCategorized:
         renderer = _categorized_renderer("cls", [("X", sym)])
         result = renderer_to_layer_style(_layer(renderer))
         entry = result["categorizedSettings"]["X"]
-        assert entry["lineWidth"] == 2.0
+        assert entry["lineWidth"] == pytest.approx(2.0 * _MM_TO_PX, rel=1e-3)
         assert entry["lineOpacity"] == 0.7
 
     def test_fill_category_has_fill_opacity(self):
@@ -346,17 +355,21 @@ class TestExceptionSafety:
 class TestLabels:
     def _labeling(self, field_name, is_expression=False,
                   font_size=12, color="#000000", font_family="Arial",
-                  halo_enabled=False, halo_size=1.0, halo_color="#ffffff"):
+                  halo_enabled=False, halo_size=1.0, halo_color="#ffffff",
+                  font_size_unit=QgsUnitTypes.RenderPoints,
+                  halo_size_unit=QgsUnitTypes.RenderMillimeters):
         labeling = MagicMock(spec=QgsVectorLayerSimpleLabeling)
         settings = MagicMock()
         settings.fieldName = field_name
         settings.isExpression = is_expression
         fmt = MagicMock()
         fmt.size.return_value = font_size
+        fmt.sizeUnit.return_value = font_size_unit
         fmt.color.return_value.name.return_value = color
         fmt.font.return_value.family.return_value = font_family
         fmt.buffer.return_value.enabled.return_value = halo_enabled
         fmt.buffer.return_value.size.return_value = halo_size
+        fmt.buffer.return_value.sizeUnit.return_value = halo_size_unit
         fmt.buffer.return_value.color.return_value.name.return_value = halo_color
         settings.format.return_value = fmt
         labeling.settings.return_value = settings
@@ -368,7 +381,7 @@ class TestLabels:
         ls = result["labelSettings"]
         assert ls["enabled"] is True
         assert ls["propertyId"] == "city"
-        assert ls["fontSize"] == 12
+        assert ls["fontSize"] == pytest.approx(12 * _PT_TO_PX, rel=1e-3)
         assert ls["fontFamily"] == "Arial"
         assert "haloEnabled" in ls
 
