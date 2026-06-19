@@ -26,7 +26,7 @@ from .projects_panel import ProjectsPanel
 from .dialog_utils import table_name as _table_name, gpkg_table_name as _gpkg_table_name, field_base_type as _field_base_type, is_valid_url as _is_valid_url
 from .style_utils import DEFAULT_COLOR, renderer_to_layer_style as _renderer_to_layer_style, geometry_type_str as _geometry_type_str
 
-SETTINGS_KEY_API_KEY = "waystones_cloud/api_key"
+SETTINGS_KEY_API_KEY = "waystones_cloud/api_key"  # pragma: allowlist secret
 SETTINGS_KEY_IS_PRIVATE = "waystones_cloud/is_private"
 SETTINGS_KEY_EU = "waystones_cloud/eu"
 POLL_INTERVAL_MS = 5000
