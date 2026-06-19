@@ -1,5 +1,5 @@
 from qgis.core import (
-    QgsWkbTypes, QgsUnitTypes,
+    Qgis, QgsWkbTypes,
     QgsSingleSymbolRenderer, QgsCategorizedSymbolRenderer,
     QgsSimpleMarkerSymbolLayer, QgsSimpleLineSymbolLayer,
     QgsSimpleFillSymbolLayer, QgsLinePatternFillSymbolLayer,
@@ -14,14 +14,15 @@ _PT_TO_PX = 96.0 / 72.0   # ~1.3333
 
 def _to_px(value: float, unit) -> float:
     """Convert a QGIS render-unit value to CSS/MapLibre pixels."""
-    if unit == QgsUnitTypes.RenderPixels:
+    if unit == Qgis.RenderUnit.Pixels:
         return round(value, 2)
-    if unit == QgsUnitTypes.RenderPoints:
+    if unit == Qgis.RenderUnit.Points:
         return round(value * _PT_TO_PX, 2)
-    if unit == QgsUnitTypes.RenderInches:
+    if unit == Qgis.RenderUnit.Inches:
         return round(value * 96.0, 2)
-    # RenderMillimeters, RenderMapUnits, unknown → treat as mm
+    # Millimeters, MapUnits, unknown → treat as mm
     return round(value * _MM_TO_PX, 2)
+
 
 _PEN_DASH = {
     "solidline": "solid", "dashline": "dashed", "dotline": "dotted",
@@ -53,7 +54,12 @@ def renderer_to_layer_style(layer) -> dict:
 
                 if isinstance(sl, QgsSimpleMarkerSymbolLayer):
                     style["pointOpacity"] = opacity
-                    style["pointSize"] = _to_px(sl.size(), sl.sizeUnit())
+                    # QGIS size() is the full diameter; circle-radius in MapLibre is radius
+                    style["pointSize"] = round(_to_px(sl.size(), sl.sizeUnit()) / 2, 2)
+                    stroke_w = sl.strokeWidth()
+                    style["outlineColor"] = sl.strokeColor().name()
+                    # strokeWidth=0 means cosmetic hairline (1 physical px)
+                    style["outlineWidth"] = 1.0 if stroke_w == 0 else round(_to_px(stroke_w, sl.strokeWidthUnit()), 2)
                     shape_name = sl.shape().name.lower()
                     if "square" in shape_name or "rectangle" in shape_name:
                         style["pointIcon"] = "square"

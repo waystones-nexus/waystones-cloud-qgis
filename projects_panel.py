@@ -305,9 +305,80 @@ class ProjectsPanel(QWidget):
                 regen_row.addStretch()
                 dep_layout.addLayout(regen_row)
         else:
-            no_dep = QLabel("No active deployment.")
-            no_dep.setStyleSheet("color: #94a3b8; font-size: 11px; background: transparent;")
-            dep_layout.addWidget(no_dep)
+            _has_tiles = (project.get("tile_size_bytes") or 0) > 0
+            _has_stac = (project.get("stac_catalog_size_bytes") or 0) > 0
+            if _has_tiles or _has_stac:
+                _svcs = "  ·  ".join(
+                    s for s, ok in [("TILES", _has_tiles), ("STAC", _has_stac)] if ok
+                )
+                no_dep = QLabel(f"{_svcs} available · No active service deployment.")
+                no_dep.setStyleSheet("color: #94a3b8; font-size: 11px; background: transparent;")
+                dep_layout.addWidget(no_dep)
+
+                _slug = project.get("service_slug") or ""
+                _domain = project.get("service_domain") or "waystones.cloud"
+                _base = f"https://{_slug}.{_domain}" if _slug else None
+                _pname = project.get("name") or ""
+                _tiles_slug = re.sub(r"[^a-z0-9]+", "-", _pname.lower()).strip("-") or "combined"
+
+                api_eps = []
+                viewer_eps = []
+                if _has_tiles:
+                    if _base:
+                        tiles_url = f"{_base}/tiles/{_tiles_slug}.styles.json"
+                        viewer_tiles_url = f"{_base}/tiles"
+                    else:
+                        tiles_url = (
+                            f"https://waystones.cloud/api/projects/{project_id}/tiles/style.json"
+                        )
+                        viewer_tiles_url = None
+                    api_eps.append(("Tiles", tiles_url, False))
+                    if viewer_tiles_url:
+                        viewer_eps.append(("Tiles", viewer_tiles_url))
+                if _has_stac and _base:
+                    api_eps.append(("STAC", f"{_base}/stac/catalog.json", False))
+                    viewer_eps.append(("STAC", f"{_base}/stac"))
+
+                if api_eps:
+                    af, al = endpoint_frame("API ENDPOINTS")
+                    for lbl, url, ext in api_eps:
+                        endpoint_row(al, lbl, url, open_ext=ext)
+                    dep_layout.addWidget(af)
+
+                if viewer_eps:
+                    vf, vl = endpoint_frame("WEB VIEWER")
+                    for lbl, url in viewer_eps:
+                        endpoint_row(vl, lbl, url, open_ext=True)
+                    dep_layout.addWidget(vf)
+
+                regen_items = []
+                if _has_tiles:
+                    regen_tiles_btn = QPushButton("↻  Tiles")
+                    regen_tiles_btn.setObjectName("smallBtn")
+                    regen_tiles_btn.clicked.connect(
+                        lambda _=False, pid=project_id: self._on_regen_tiles(pid)
+                    )
+                    regen_items.append(regen_tiles_btn)
+                if _has_stac:
+                    regen_stac_btn = QPushButton("↻  STAC")
+                    regen_stac_btn.setObjectName("smallBtn")
+                    regen_stac_btn.clicked.connect(
+                        lambda _=False, pid=project_id: self._on_regen_stac(pid)
+                    )
+                    regen_items.append(regen_stac_btn)
+                if regen_items:
+                    regen_row = QHBoxLayout()
+                    regen_lbl = QLabel("Regenerate:")
+                    regen_lbl.setStyleSheet("font-size: 11px; color: #64748b; background: transparent;")
+                    regen_row.addWidget(regen_lbl)
+                    for btn in regen_items:
+                        regen_row.addWidget(btn)
+                    regen_row.addStretch()
+                    dep_layout.addLayout(regen_row)
+            else:
+                no_dep = QLabel("No active deployment.")
+                no_dep.setStyleSheet("color: #94a3b8; font-size: 11px; background: transparent;")
+                dep_layout.addWidget(no_dep)
 
             deploy_btn = QPushButton("Deploy…")
             deploy_btn.setObjectName("smallBtn")

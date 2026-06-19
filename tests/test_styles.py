@@ -15,7 +15,7 @@ def _ensure_qgis(qgis_app):
 
 
 from qgis.core import (  # noqa: E402
-    QgsUnitTypes,
+    Qgis,
     QgsSingleSymbolRenderer, QgsCategorizedSymbolRenderer,
     QgsSimpleMarkerSymbolLayer, QgsSimpleLineSymbolLayer,
     QgsSimpleFillSymbolLayer, QgsLinePatternFillSymbolLayer,
@@ -47,7 +47,7 @@ def _layer(renderer=None, labeling=None):
 
 
 def _marker_sl(size=4.0, shape_name="circle",
-               size_unit=QgsUnitTypes.RenderMillimeters):
+               size_unit=Qgis.RenderUnit.Millimeters):
     sl = MagicMock(spec=QgsSimpleMarkerSymbolLayer)
     sl.size.return_value = size
     sl.sizeUnit.return_value = size_unit
@@ -56,7 +56,7 @@ def _marker_sl(size=4.0, shape_name="circle",
 
 
 def _line_sl(width=1.0, pen_name="solidline",
-             width_unit=QgsUnitTypes.RenderMillimeters):
+             width_unit=Qgis.RenderUnit.Millimeters):
     sl = MagicMock(spec=QgsSimpleLineSymbolLayer)
     sl.width.return_value = width
     sl.widthUnit.return_value = width_unit
@@ -65,7 +65,7 @@ def _line_sl(width=1.0, pen_name="solidline",
 
 
 def _fill_sl(opacity=1.0, stroke_name="solidline", stroke_width=0.5, brush_name="solid",
-             stroke_width_unit=QgsUnitTypes.RenderMillimeters):
+             stroke_width_unit=Qgis.RenderUnit.Millimeters):
     sl = MagicMock(spec=QgsSimpleFillSymbolLayer)
     sl.strokeStyle.return_value.name.lower.return_value = stroke_name
     sl.strokeWidth.return_value = stroke_width
@@ -75,7 +75,7 @@ def _fill_sl(opacity=1.0, stroke_name="solidline", stroke_width=0.5, brush_name=
 
 
 def _line_pattern_sl(distance=10.0, angle=0.0,
-                     distance_unit=QgsUnitTypes.RenderMillimeters):
+                     distance_unit=Qgis.RenderUnit.Millimeters):
     sl = MagicMock(spec=QgsLinePatternFillSymbolLayer)
     sl.distance.return_value = distance
     sl.distanceUnit.return_value = distance_unit
@@ -125,7 +125,7 @@ class TestSingleMarker:
         assert result["type"] == "simple"
         assert result["simpleColor"] == "#aabbcc"
         assert result["pointIcon"] == "circle"
-        assert result["pointSize"] == pytest.approx(4.0 * _MM_TO_PX, rel=1e-3)
+        assert result["pointSize"] == pytest.approx(4.0 * _MM_TO_PX / 2, rel=1e-3)
         assert result["pointOpacity"] == 0.8
 
     def test_square_shape(self):
@@ -296,7 +296,7 @@ class TestCategorized:
         renderer = _categorized_renderer("cls", [("X", sym)])
         result = renderer_to_layer_style(_layer(renderer))
         entry = result["categorizedSettings"]["X"]
-        assert entry["pointSize"] == pytest.approx(3.0 * _MM_TO_PX, rel=1e-3)
+        assert entry["pointSize"] == pytest.approx(3.0 * _MM_TO_PX / 2, rel=1e-3)
         assert entry["pointOpacity"] == 0.5
 
     def test_line_category_has_width_and_opacity(self):
@@ -356,8 +356,8 @@ class TestLabels:
     def _labeling(self, field_name, is_expression=False,
                   font_size=12, color="#000000", font_family="Arial",
                   halo_enabled=False, halo_size=1.0, halo_color="#ffffff",
-                  font_size_unit=QgsUnitTypes.RenderPoints,
-                  halo_size_unit=QgsUnitTypes.RenderMillimeters):
+                  font_size_unit=Qgis.RenderUnit.Points,
+                  halo_size_unit=Qgis.RenderUnit.Millimeters):
         labeling = MagicMock(spec=QgsVectorLayerSimpleLabeling)
         settings = MagicMock()
         settings.fieldName = field_name

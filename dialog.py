@@ -1400,7 +1400,11 @@ class WaystonesDialog(QDialog):
         status = data.get("status", "")
         if status == "ready":
             self._poll_timer.stop()
-            self._deploy_done.emit(data.get("public_url") or "")
+            url = data.get("public_url") or (
+                f"https://{data['slug']}.{data.get('service_domain', 'waystones.cloud')}"
+                if data.get("slug") else ""
+            )
+            self._deploy_done.emit(url)
         elif status in ("failed", "deleted"):
             self._poll_timer.stop()
             self._deploy_error.emit(data.get("error_message") or f"Deployment {status}.")
@@ -1445,7 +1449,7 @@ class WaystonesDialog(QDialog):
         self._set_busy(False)
         if self._replace_mode:
             self._cancel_replace_mode()
-            self._projects_panel.load_projects()
+        self._projects_panel.load_projects()
         msg = QMessageBox(self)
         msg.setWindowTitle("Waystones Cloud")
         msg.setIcon(QMessageBox.Icon.Information)
