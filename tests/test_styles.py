@@ -1,7 +1,7 @@
 """Tests for renderer_to_layer_style() — requires a running QgsApplication (pytest-qgis)."""
 import os
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -14,13 +14,13 @@ def _ensure_qgis(qgis_app):
     pass
 
 
-from qgis.core import (
+from qgis.core import (  # noqa: E402
     QgsSingleSymbolRenderer, QgsCategorizedSymbolRenderer,
     QgsSimpleMarkerSymbolLayer, QgsSimpleLineSymbolLayer,
     QgsSimpleFillSymbolLayer, QgsLinePatternFillSymbolLayer,
     QgsVectorLayerSimpleLabeling,
 )
-from style_utils import renderer_to_layer_style, DEFAULT_COLOR
+from style_utils import renderer_to_layer_style, DEFAULT_COLOR  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

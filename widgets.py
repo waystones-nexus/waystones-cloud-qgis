@@ -106,8 +106,8 @@ def endpoint_row(layout, label_text: str, url: str, open_ext: bool = True):
         url_text = QLabel(url)
         url_text.setStyleSheet("font-size: 10px; color: #6366f1; background: transparent;")
     url_text.setTextInteractionFlags(
-        Qt.TextInteractionFlag.TextSelectableByMouse |
-        Qt.TextInteractionFlag.LinksAccessibleByMouse
+        Qt.TextInteractionFlag.TextSelectableByMouse
+        | Qt.TextInteractionFlag.LinksAccessibleByMouse
     )
     copy_btn = QPushButton("Copy")
     copy_btn.setObjectName("smallBtn")

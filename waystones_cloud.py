@@ -1,7 +1,7 @@
 import os
 from qgis.PyQt.QtWidgets import QAction
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtCore import QSettings
+
 
 
 class WaystonesCloudPlugin:
