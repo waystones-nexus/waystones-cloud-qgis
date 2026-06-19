@@ -2,7 +2,6 @@ import os
 import re
 import tempfile
 import threading
-from urllib.parse import urlparse
 
 from PyQt6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QScrollArea, QWidget,
@@ -16,11 +15,7 @@ from PyQt6.QtGui import QFont, QIcon, QPixmap
 from qgis.gui import QgsRendererPropertiesDialog
 from qgis.core import (
     QgsVectorFileWriter, QgsProject, QgsMapLayer,
-    QgsWkbTypes, QgsCoordinateReferenceSystem, QgsCoordinateTransform,
-    QgsSingleSymbolRenderer, QgsCategorizedSymbolRenderer,
-    QgsSimpleMarkerSymbolLayer, QgsSimpleLineSymbolLayer,
-    QgsSimpleFillSymbolLayer, QgsLinePatternFillSymbolLayer,
-    QgsVectorLayerSimpleLabeling, QgsStyle,
+    QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsStyle,
 )
 
 from .api import WaystonesAPI, WaystonesAPIError
@@ -28,12 +23,13 @@ from .options import THEMES, LICENSES, ACCESS_RIGHTS, PERIODICITIES
 from .styles import QSS as _QSS, MSGBOX_QSS as _MSGBOX_QSS
 from .widgets import make_combo, make_domain_combo
 from .projects_panel import ProjectsPanel
+from .dialog_utils import table_name as _table_name, gpkg_table_name as _gpkg_table_name, field_base_type as _field_base_type, is_valid_url as _is_valid_url
+from .style_utils import DEFAULT_COLOR, renderer_to_layer_style as _renderer_to_layer_style, geometry_type_str as _geometry_type_str
 
 SETTINGS_KEY_API_KEY = "waystones_cloud/api_key"
 SETTINGS_KEY_IS_PRIVATE = "waystones_cloud/is_private"
 SETTINGS_KEY_EU = "waystones_cloud/eu"
 POLL_INTERVAL_MS = 5000
-DEFAULT_COLOR = "#4A90D9"
 
 
 class WaystonesDialog(QDialog):
@@ -740,7 +736,7 @@ class WaystonesDialog(QDialog):
         else:
             try:
                 self._deploy_btn.clicked.disconnect()
-            except RuntimeError:
+            except (RuntimeError, TypeError):
                 pass
             self._deploy_btn.clicked.connect(self._on_deploy)
             self._deploy_btn.setEnabled(True)
@@ -973,145 +969,7 @@ class WaystonesDialog(QDialog):
             self._update_style_summary(style)
 
     def _renderer_to_layer_style(self, layer) -> dict:
-        """Translate the layer's current QGIS renderer into a LayerStyle dict."""
-        style: dict = {"type": "simple", "simpleColor": DEFAULT_COLOR}
-
-        try:
-            renderer = layer.renderer()
-            if not renderer:
-                return style
-
-            _pen_dash = {
-                "solidline": "solid", "dashline": "dashed", "dotline": "dotted",
-                "dashdotline": "dash-dot", "dashdotdotline": "dash-dot-dot",
-            }
-            _brush_hatch = {
-                "horpattern": "horizontal", "verpattern": "vertical",
-                "crosspattern": "cross", "bdiagpattern": "b_diagonal",
-                "fdiagpattern": "f_diagonal", "diagcrosspattern": "diagonal_x",
-            }
-
-            if isinstance(renderer, QgsSingleSymbolRenderer):
-                sym = renderer.symbol()
-                style["simpleColor"] = sym.color().name()
-                opacity = sym.opacity()
-
-                for i in range(sym.symbolLayerCount()):
-                    sl = sym.symbolLayer(i)
-
-                    if isinstance(sl, QgsSimpleMarkerSymbolLayer):
-                        style["pointOpacity"] = opacity
-                        style["pointSize"] = sl.size()
-                        shape_name = sl.shape().name.lower()
-                        if "square" in shape_name or "rectangle" in shape_name:
-                            style["pointIcon"] = "square"
-                        elif "triangle" in shape_name:
-                            style["pointIcon"] = "triangle"
-                        elif "star" in shape_name:
-                            style["pointIcon"] = "star"
-                        else:
-                            style["pointIcon"] = "circle"
-                        break
-
-                    elif isinstance(sl, QgsSimpleLineSymbolLayer):
-                        style["lineOpacity"] = opacity
-                        style["lineWidth"] = sl.width()
-                        style["lineDash"] = _pen_dash.get(sl.penStyle().name.lower(), "solid")
-                        break
-
-                    elif isinstance(sl, QgsSimpleFillSymbolLayer):
-                        style["fillOpacity"] = opacity
-                        stroke = sl.strokeStyle()
-                        style["showOutline"] = stroke.name.lower() != "nopen"
-                        if style["showOutline"]:
-                            style["lineWidth"] = sl.strokeWidth()
-                            style["lineDash"] = _pen_dash.get(stroke.name.lower(), "solid")
-                        hatch = _brush_hatch.get(sl.brushStyle().name.lower())
-                        if hatch:
-                            style["hatchStyle"] = hatch
-                        break
-
-                    elif isinstance(sl, QgsLinePatternFillSymbolLayer):
-                        style["fillOpacity"] = opacity
-                        style["hatchSpacing"] = sl.distance()
-                        angle = sl.lineAngle() % 180
-                        if angle < 5:
-                            style["hatchStyle"] = "horizontal"
-                        elif abs(angle - 90) < 5:
-                            style["hatchStyle"] = "vertical"
-                        elif abs(angle - 45) < 5:
-                            style["hatchStyle"] = "b_diagonal"
-                        else:
-                            style["hatchStyle"] = "f_diagonal"
-                        break
-
-            elif isinstance(renderer, QgsCategorizedSymbolRenderer):
-                style["type"] = "categorized"
-                style["propertyId"] = renderer.classAttribute()
-                cat_settings: dict = {}
-                cat_values: list = []
-                fallback_color = DEFAULT_COLOR
-
-                for cat in renderer.categories():
-                    val = str(cat.value())
-                    sym = cat.symbol()
-                    if not val:
-                        if sym:
-                            fallback_color = sym.color().name()
-                        continue
-                    cat_values.append(val)
-                    entry: dict = {}
-                    if sym:
-                        entry["color"] = sym.color().name()
-                        opacity = sym.opacity()
-                        for i in range(sym.symbolLayerCount()):
-                            sl = sym.symbolLayer(i)
-                            if isinstance(sl, QgsSimpleMarkerSymbolLayer):
-                                entry["pointSize"] = sl.size()
-                                entry["pointOpacity"] = opacity
-                            elif isinstance(sl, QgsSimpleLineSymbolLayer):
-                                entry["lineWidth"] = sl.width()
-                                entry["lineOpacity"] = opacity
-                            elif isinstance(sl, QgsSimpleFillSymbolLayer):
-                                entry["fillOpacity"] = opacity
-                            break
-                    cat_settings[val] = entry
-
-                style["simpleColor"] = fallback_color
-                style["categorizedSettings"] = cat_settings
-                style["categorizedValues"] = cat_values
-
-            else:
-                # Graduated, rule-based, etc. — grab primary color only
-                try:
-                    style["simpleColor"] = renderer.symbol().color().name()
-                except Exception:
-                    pass
-
-        except Exception:
-            pass
-
-        # Labels
-        try:
-            labeling = layer.labeling()
-            if labeling and isinstance(labeling, QgsVectorLayerSimpleLabeling):
-                settings = labeling.settings()
-                if not settings.isExpression and settings.fieldName:
-                    fmt = settings.format()
-                    style["labelSettings"] = {
-                        "enabled": True,
-                        "propertyId": settings.fieldName,
-                        "fontSize": int(fmt.size()),
-                        "color": fmt.color().name(),
-                        "fontFamily": fmt.font().family(),
-                        "haloEnabled": fmt.buffer().enabled(),
-                        "haloSize": fmt.buffer().size(),
-                        "haloColor": fmt.buffer().color().name(),
-                    }
-        except Exception:
-            pass
-
-        return style
+        return _renderer_to_layer_style(layer)
 
     def _update_style_swatch(self, color_hex: str):
         self._lyr_color_swatch.setStyleSheet(
@@ -1144,41 +1002,16 @@ class WaystonesDialog(QDialog):
         return DEFAULT_COLOR
 
     def _table_name(self, name: str) -> str:
-        return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")[:63]
+        return _table_name(name)
 
     def _gpkg_table_name(self, layer) -> str:
-        """Return the actual table name from the layer's GeoPackage source, or fall back to sanitized display name."""
-        source = layer.source()
-        if "|layername=" in source:
-            return source.split("|layername=")[1].split("|")[0]
-        return self._table_name(layer.name())
+        return _gpkg_table_name(layer)
 
     def _geometry_type_str(self, layer):
-        flat = QgsWkbTypes.flatType(layer.wkbType())
-        return {
-            QgsWkbTypes.Type.Point: "Point",
-            QgsWkbTypes.Type.MultiPoint: "MultiPoint",
-            QgsWkbTypes.Type.LineString: "LineString",
-            QgsWkbTypes.Type.MultiLineString: "MultiLineString",
-            QgsWkbTypes.Type.Polygon: "Polygon",
-            QgsWkbTypes.Type.MultiPolygon: "MultiPolygon",
-            QgsWkbTypes.Type.GeometryCollection: "GeometryCollection",
-            QgsWkbTypes.Type.NoGeometry: "None",
-        }.get(flat, "Point")
+        return _geometry_type_str(layer)
 
     def _field_base_type(self, qf):
-        tn = qf.typeName().lower()
-        if any(x in tn for x in ("int", "serial", "long")):
-            return "integer"
-        if any(x in tn for x in ("float", "double", "real", "numeric", "decimal", "number")):
-            return "number"
-        if "bool" in tn:
-            return "boolean"
-        if "datetime" in tn or "timestamp" in tn:
-            return "date-time"
-        if "date" in tn:
-            return "date"
-        return "string"
+        return _field_base_type(qf)
 
     def _extract_fields(self, layer):
         skip = {"fid", "geom", "geometry", "wkb_geometry", "the_geom"}
@@ -1270,11 +1103,7 @@ class WaystonesDialog(QDialog):
 
     @staticmethod
     def _is_valid_url(url: str) -> bool:
-        try:
-            p = urlparse(url)
-            return p.scheme in ("http", "https") and bool(p.netloc)
-        except Exception:
-            return False
+        return _is_valid_url(url)
 
     # ------------------------------------------------------------------
     # API key verification
