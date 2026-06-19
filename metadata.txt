@@ -2,7 +2,7 @@
 name=Waystones Cloud
 qgisMinimumVersion=4.0
 description=Publish layers from QGIS to Waystones Cloud — OAPIF, vector tiles, and STAC with one click.
-version=1.3.5
+version=1.3.6
 author=Waystones
 email=support@waystones.cloud
 about=Select any vector layer open in QGIS, pick a slug, choose which services to deploy (OGC API Features, vector tiles, STAC), and publish directly to Waystones Cloud. Layers are exported to GeoPackage automatically — shapefiles, GeoJSON, PostGIS, GML, KML and more all work. Requires a Waystones Cloud account and API key (https://waystones.cloud).
@@ -13,6 +13,6 @@ homepage=https://github.com/waystones-nexus/waystones-cloud-qgis
 category=Web
 icon=resources/icon.png
 license=GPL-2.0-or-later
-changelog=1.3.5 - Fix point style size conversion, add outline width/color support, fallback deployment URL construction, and ensure projects panel reload
+changelog=1.3.6 - Fix categorized point style size conversion (diameter-to-radius)
 experimental=False
 deprecated=False

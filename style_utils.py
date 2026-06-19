@@ -125,7 +125,7 @@ def renderer_to_layer_style(layer) -> dict:
                     for i in range(sym.symbolLayerCount()):
                         sl = sym.symbolLayer(i)
                         if isinstance(sl, QgsSimpleMarkerSymbolLayer):
-                            entry["pointSize"] = _to_px(sl.size(), sl.sizeUnit())
+                            entry["pointSize"] = round(_to_px(sl.size(), sl.sizeUnit()) / 2, 2)
                             entry["pointOpacity"] = opacity
                         elif isinstance(sl, QgsSimpleLineSymbolLayer):
                             entry["lineWidth"] = _to_px(sl.width(), sl.widthUnit())
