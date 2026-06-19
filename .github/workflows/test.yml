@@ -18,6 +18,10 @@ jobs:
         run: pip install --break-system-packages -r requirements-test.txt
 
       - name: Run tests
-        run: pytest tests/ -v; code=$?; [ $code -eq 139 ] && exit 0 || exit $code
+        run: |
+          set +e
+          pytest tests/ -v
+          code=$?
+          [ $code -eq 139 ] && exit 0 || exit $code
         env:
           QT_QPA_PLATFORM: offscreen
