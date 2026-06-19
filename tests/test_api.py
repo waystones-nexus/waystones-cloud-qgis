@@ -4,7 +4,7 @@ import os
 import sys
 import tempfile
 from contextlib import contextmanager
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 

@@ -822,7 +822,7 @@ class WaystonesDialog(QDialog):
         cfg = self._layer_configs.get(layer_id, {})
 
         for widget in (self._lyr_name_edit, self._lyr_title_edit,
-                        self._lyr_desc_edit, self._lyr_keywords_edit):
+                       self._lyr_desc_edit, self._lyr_keywords_edit):
             widget.blockSignals(True)
 
         self._lyr_name_edit.setText(cfg.get("name", ""))
@@ -834,7 +834,7 @@ class WaystonesDialog(QDialog):
         self._update_style_summary(style)
 
         for widget in (self._lyr_name_edit, self._lyr_title_edit,
-                        self._lyr_desc_edit, self._lyr_keywords_edit):
+                       self._lyr_desc_edit, self._lyr_keywords_edit):
             widget.blockSignals(False)
 
         self._layer_config_widget.setEnabled(True)

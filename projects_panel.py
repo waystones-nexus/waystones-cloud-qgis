@@ -545,6 +545,7 @@ class ProjectsPanel(QWidget):
             msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
             if msg.exec() != QMessageBox.StandardButton.Yes:
                 return
+
             def _run():
                 try:
                     WaystonesAPI(api_key).revoke_project_api_key(project_id, key_id)
@@ -558,6 +559,7 @@ class ProjectsPanel(QWidget):
             label, ok = QInputDialog.getText(self, "New API Key", "Key label (e.g. 'QGIS Desktop'):")
             if not ok or not label.strip():
                 return
+
             def _run():
                 try:
                     result = WaystonesAPI(api_key).create_project_api_key(project_id, label.strip())
@@ -669,7 +671,7 @@ class ProjectsPanel(QWidget):
 
         chk_oapif = QCheckBox("OGC API Features (OAPIF)")
         chk_tiles = QCheckBox("Vector tiles")
-        chk_stac  = QCheckBox("STAC catalog")
+        chk_stac = QCheckBox("STAC catalog")
 
         existing_svcs = existing_dep.get("services") or [] if existing_dep else []
         tiles_already_deployed = "tiles" in existing_svcs or (project.get("tile_size_bytes") or 0) > 0
@@ -1001,6 +1003,7 @@ class ProjectsPanel(QWidget):
     def _regen_worker(self, project_id: str, label: str, api_method: str, poll_fn):
         api_key = self._get_api_key()
         self._log(f"Queuing {label} regeneration for {project_id}…")
+
         def _run():
             try:
                 getattr(WaystonesAPI(api_key), api_method)(project_id)
@@ -1151,18 +1154,18 @@ class ProjectsPanel(QWidget):
             e.setText(val or "")
             return e
 
-        e_contact_name  = _field(meta.get("contactName"))
+        e_contact_name = _field(meta.get("contactName"))
         e_contact_email = _field(meta.get("contactEmail"))
-        e_contact_org   = _field(meta.get("contactOrganization"))
-        e_keywords      = _field(", ".join(meta.get("keywords") or []))
+        e_contact_org = _field(meta.get("contactOrganization"))
+        e_keywords = _field(", ".join(meta.get("keywords") or []))
 
-        e_theme       = make_combo(THEMES, meta.get("theme"))
-        e_license     = make_combo(LICENSES, meta.get("license"))
-        e_access      = make_combo(ACCESS_RIGHTS, meta.get("accessRights"))
+        e_theme = make_combo(THEMES, meta.get("theme"))
+        e_license = make_combo(LICENSES, meta.get("license"))
+        e_access = make_combo(ACCESS_RIGHTS, meta.get("accessRights"))
         e_periodicity = make_combo(PERIODICITIES, meta.get("accrualPeriodicity"))
 
-        e_url           = _field(meta.get("url"))
-        e_terms         = _field(meta.get("termsOfService"))
+        e_url = _field(meta.get("url"))
+        e_terms = _field(meta.get("termsOfService"))
 
         e_purpose = QTextEdit()
         e_purpose.setPlainText(meta.get("purpose") or "")
@@ -1272,11 +1275,11 @@ class ProjectsPanel(QWidget):
             meta_url = e_url.text().strip()
             meta_terms = e_terms.text().strip()
             if meta_url and not _is_valid_url(meta_url):
-                status_lbl.setText(f"Invalid Dataset URL")
+                status_lbl.setText("Invalid Dataset URL")
                 status_lbl.setStyleSheet("color: #dc2626; font-size: 11px;")
                 return
             if meta_terms and not _is_valid_url(meta_terms):
-                status_lbl.setText(f"Invalid Terms of Service URL")
+                status_lbl.setText("Invalid Terms of Service URL")
                 status_lbl.setStyleSheet("color: #dc2626; font-size: 11px;")
                 return
 

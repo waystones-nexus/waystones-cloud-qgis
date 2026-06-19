@@ -3,9 +3,9 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock  # noqa: E402
 
-from dialog_utils import table_name, gpkg_table_name, field_base_type, is_valid_url
+from dialog_utils import table_name, gpkg_table_name, field_base_type, is_valid_url  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
