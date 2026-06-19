@@ -3,7 +3,6 @@ from qgis.PyQt.QtWidgets import QAction
 from qgis.PyQt.QtGui import QIcon
 
 
-
 class WaystonesCloudPlugin:
     def __init__(self, iface):
         self.iface = iface
