@@ -2,7 +2,7 @@
 name=Waystones Cloud
 qgisMinimumVersion=4.0
 description=Host and share vector layers as OGC API Features, vector tiles, and STAC — published directly from QGIS to Waystones Cloud.
-version=1.3.7
+version=1.4.0
 author=Waystones
 email=support@waystones.cloud
 about=Waystones Cloud turns any QGIS vector layer into live, shareable web services in seconds.
@@ -22,6 +22,7 @@ homepage=https://github.com/waystones-nexus/waystones-cloud-qgis
 category=Web
 icon=resources/icon.png
 license=GPL-2.0-or-later
-changelog=1.3.7 - Improve plugin description, about copy, and expand tag list
+changelog=1.4.0 - Add additional CRS selector to Services tab — specify extra EPSG codes the published services advertise
+    1.3.7 - Improve plugin description, about copy, and expand tag list
 experimental=False
 deprecated=False

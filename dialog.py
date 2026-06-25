@@ -683,6 +683,38 @@ class WaystonesDialog(QDialog):
         self._stac_options.setVisible(False)
         layout.addWidget(self._stac_options)
 
+        crs_lbl = QLabel("Additional CRS")
+        crs_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #1e293b; padding-top: 8px;")
+        layout.addWidget(crs_lbl)
+
+        crs_note = QLabel(
+            "Extra coordinate systems your services will advertise. "
+            "EPSG:4326, EPSG:4258, EPSG:3857, and the dataset's native CRS are always included."
+        )
+        crs_note.setStyleSheet("font-size: 11px; color: #6b7280;")
+        crs_note.setWordWrap(True)
+        layout.addWidget(crs_note)
+
+        add_row = QHBoxLayout()
+        self._crs_input = QLineEdit()
+        self._crs_input.setPlaceholderText("EPSG:25833")
+        self._crs_input.setFixedWidth(160)
+        self._crs_add_btn = QPushButton("Add")
+        self._crs_add_btn.setObjectName("smallBtn")
+        add_row.addWidget(self._crs_input)
+        add_row.addWidget(self._crs_add_btn)
+        add_row.addStretch()
+        layout.addLayout(add_row)
+
+        self._crs_list = QListWidget()
+        self._crs_list.setObjectName("crsList")
+        self._crs_list.setMaximumHeight(100)
+        layout.addWidget(self._crs_list)
+
+        self._crs_remove_btn = QPushButton("Remove selected")
+        self._crs_remove_btn.setObjectName("smallBtn")
+        layout.addWidget(self._crs_remove_btn)
+
         layout.addStretch()
         return w
 
@@ -871,6 +903,10 @@ class WaystonesDialog(QDialog):
         self._chk_custom_simplification.toggled.connect(self._spin_simplification.setEnabled)
         self._chk_stac.toggled.connect(self._stac_options.setVisible)
         self._stac_partition_combo.currentIndexChanged.connect(self._on_partition_strategy_changed)
+        self._crs_add_btn.clicked.connect(self._on_crs_add)
+        self._crs_remove_btn.clicked.connect(self._on_crs_remove)
+        self._crs_input.returnPressed.connect(self._on_crs_add)
+        self._crs_input.textChanged.connect(lambda: self._crs_input.setStyleSheet(""))
         self._bbox_detect_btn.clicked.connect(self._detect_bbox_from_layers)
         self._log_line.connect(self._append_log)
         self._progress.connect(self._update_progress)
@@ -881,6 +917,25 @@ class WaystonesDialog(QDialog):
     def _on_auto_zoom_toggled(self, checked: bool):
         self._spin_min_zoom.setEnabled(not checked)
         self._spin_max_zoom.setEnabled(not checked)
+
+    def _on_crs_add(self):
+        raw = self._crs_input.text().strip().upper()
+        if not raw:
+            return
+        if not raw.startswith("EPSG:"):
+            raw = f"EPSG:{raw}"
+        if not QgsCoordinateReferenceSystem(raw).isValid():
+            self._crs_input.setStyleSheet("border-color: #f87171;")
+            return
+        self._crs_input.setStyleSheet("")
+        existing = [self._crs_list.item(i).text() for i in range(self._crs_list.count())]
+        if raw not in existing:
+            self._crs_list.addItem(raw)
+        self._crs_input.clear()
+
+    def _on_crs_remove(self):
+        for item in self._crs_list.selectedItems():
+            self._crs_list.takeItem(self._crs_list.row(item))
 
     def _on_partition_strategy_changed(self):
         self._stac_partition_col.setEnabled(
@@ -1082,6 +1137,7 @@ class WaystonesDialog(QDialog):
             "description": description,
             "version": "1.0.0",
             "crs": crs,
+            "supportedCRS": [self._crs_list.item(i).text() for i in range(self._crs_list.count())],
             "layers": layer_objs,
             "metadata": {
                 "contactName": self._meta_contact_name.text().strip(),

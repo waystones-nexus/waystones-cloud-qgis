@@ -151,6 +151,20 @@ QListWidget#configList::item:selected {
     color: #3730a3;
 }
 
+/* ── Additional CRS list (Services tab) ────────────────────────── */
+QListWidget#crsList {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    color: #1e293b;
+    font-size: 12px;
+    outline: none;
+}
+QListWidget#crsList::item:selected {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
 /* ── Buttons ────────────────────────────────────────────────────── */
 QPushButton {
     background: #f1f5f9;
